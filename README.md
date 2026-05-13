@@ -30,6 +30,20 @@ Important local paths are configured through environment variables:
 
 The committed defaults use generic `engines/...` placeholders so machine-specific paths and secrets stay local.
 
+## No Models In Git
+
+EchoFrame is designed to run locally without storing model weights in the repository. Keep engines and model files in external local folders, then point `.env` to them.
+
+The repository ignores:
+
+- `engines/`
+- `models/`
+- `pretrained_models/`
+- common model weights such as `.safetensors`, `.gguf`, `.pth`, `.pt`, `.ckpt`, `.bin`
+- generated media such as `.mp4`, `.wav`, `.mp3`
+
+Use `bootstrap_stack.ps1 -Health` to check whether the local machine has the required models. Use `bootstrap_stack.ps1 -Download` only on a machine with enough disk space.
+
 ## Daily Run
 
 Lightweight UI/API start:

@@ -1,10 +1,28 @@
 __pycache__/
 *.py[cod]
 .env
+.env.*
+!.env.example
 .venv/
 venv/
 data/
+engines/
+models/
+pretrained_models/
 server.log
 server.err
 .pytest_cache/
 
+# Large local model weights and generated media stay outside git.
+*.ckpt
+*.gguf
+*.onnx
+*.pt
+*.pth
+*.safetensors
+*.bin
+*.mp4
+*.mov
+*.wav
+*.flac
+*.mp3
