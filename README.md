@@ -63,10 +63,10 @@ Native CosyVoice support remains in the code for portable builds or advanced loc
 
 ## Voice Presets
 
-The repo includes small CosyVoice zero-shot reference clips under `assets/voices/`. Current defaults are English-friendly:
+The repo includes small CosyVoice zero-shot reference clips under `assets/voices/`. EchoFrame automatically selects language-matched presets from the final spoken text:
 
-- `TTS_FEMALE_VOICE_ID=d36d10b9`
-- `TTS_MALE_VOICE_ID=c715d869`
+- Chinese female/male: `TTS_ZH_FEMALE_VOICE_ID=4988cee6`, `TTS_ZH_MALE_VOICE_ID=21897fae`
+- English female/male: `TTS_EN_FEMALE_VOICE_ID=d36d10b9`, `TTS_EN_MALE_VOICE_ID=c715d869`
 
 These are reference audio files, not model weights. Replace `assets/voices/presets.json` or point `TTS_PRESETS_FILE` elsewhere if you want different voices.
 

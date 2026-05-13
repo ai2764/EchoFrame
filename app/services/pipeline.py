@@ -86,7 +86,7 @@ class TalkingAvatarPipeline:
         timings["llm"] = round(time.perf_counter() - start, 3)
         yield {"type": "stage", "stage": "llm", "status": "done", "duration": timings["llm"]}
         await asyncio.sleep(0.01)
-        voice_id = self._voice_id(req)
+        voice_id = self._voice_id(req, plan["reply"])
 
         audio_path = out_dir / "voice.wav"
         start = time.perf_counter()
@@ -203,9 +203,17 @@ class TalkingAvatarPipeline:
         value = ((value + 15) // 16) * 16
         return min(self.settings.resolution_max, value)
 
-    def _voice_id(self, req: ChatRequest) -> str:
+    def _voice_id(self, req: ChatRequest, spoken_text: str = "") -> str:
+        if req.voice_id:
+            return req.voice_id
+        language = self._voice_language(spoken_text or req.reply_override or req.message)
+        if language == "zh":
+            if req.voice == "male":
+                return self.settings.tts_zh_male_voice_id or self.settings.tts_male_voice_id
+            return self.settings.tts_zh_female_voice_id or self.settings.tts_female_voice_id
         if req.voice == "male":
-            return self.settings.tts_male_voice_id
-        if req.voice == "female":
-            return self.settings.tts_female_voice_id
-        return req.voice_id or self.settings.tts_default_voice_id
+            return self.settings.tts_en_male_voice_id or self.settings.tts_male_voice_id
+        return self.settings.tts_en_female_voice_id or self.settings.tts_female_voice_id or self.settings.tts_default_voice_id
+
+    def _voice_language(self, text: str) -> str:
+        return "zh" if any("\u4e00" <= char <= "\u9fff" for char in text) else "en"

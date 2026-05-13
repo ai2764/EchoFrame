@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     tts_default_voice_id: str = "d36d10b9"
     tts_female_voice_id: str = "d36d10b9"
     tts_male_voice_id: str = "c715d869"
+    tts_zh_female_voice_id: str = "4988cee6"
+    tts_zh_male_voice_id: str = "21897fae"
+    tts_en_female_voice_id: str = "d36d10b9"
+    tts_en_male_voice_id: str = "c715d869"
     tts_use_llm_instruct: bool = False
     tts_fixed_instruct: str = ""
     tts_speed: float = 1.0

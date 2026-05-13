@@ -44,6 +44,8 @@ foreach ($dir in @(
 foreach ($dir in @("app", "static", "tools", "assets")) {
     Copy-Item -LiteralPath (Join-Path $RepoRoot $dir) -Destination (Join-Path $AppRoot $dir) -Recurse -Force
 }
+Get-ChildItem -LiteralPath $AppRoot -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
+    Remove-Item -Recurse -Force
 
 foreach ($file in @(
     "pyproject.toml",

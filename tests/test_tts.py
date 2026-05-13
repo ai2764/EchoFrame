@@ -59,14 +59,19 @@ def test_pipeline_maps_gender_to_configured_voice_ids():
     try:
         settings = Settings(
             data_dir=tmp_path / "data",
-            tts_female_voice_id="female_voice",
-            tts_male_voice_id="male_voice",
+            tts_en_female_voice_id="en_female_voice",
+            tts_en_male_voice_id="en_male_voice",
+            tts_zh_female_voice_id="zh_female_voice",
+            tts_zh_male_voice_id="zh_male_voice",
         )
         pipeline = TalkingAvatarPipeline(settings)
         base = {"avatar_id": "av_test", "message": "hello"}
 
-        assert pipeline._voice_id(ChatRequest(**base, voice="female")) == "female_voice"
-        assert pipeline._voice_id(ChatRequest(**base, voice="male")) == "male_voice"
+        assert pipeline._voice_id(ChatRequest(**base, voice="female"), "hello") == "en_female_voice"
+        assert pipeline._voice_id(ChatRequest(**base, voice="male"), "hello") == "en_male_voice"
+        assert pipeline._voice_id(ChatRequest(**base, voice="female"), "你好") == "zh_female_voice"
+        assert pipeline._voice_id(ChatRequest(**base, voice="male"), "你好") == "zh_male_voice"
+        assert pipeline._voice_id(ChatRequest(**base, voice_id="exact_voice", voice="female"), "你好") == "exact_voice"
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)
 

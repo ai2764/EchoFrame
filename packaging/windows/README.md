@@ -46,6 +46,7 @@ EchoFramePortable/
 - Each heavy module keeps its own environment to avoid dependency conflicts.
 - The launcher writes `.env` from `portable.env.example`, then runs service health checks.
 - LM Studio is not pinned to a model by default. EchoFrame uses whichever LLM is currently loaded in LM Studio; `LLM_MODEL` is only an optional override.
+- TTS voice selection is automatic by final spoken-text language: Chinese text uses the Chinese preset pair, and English text uses the English preset pair.
 
 ## Suggested Runtime Strategy
 
