@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EchoFrame</title>
+  <link rel="stylesheet" href="/static/styles.css?v=5">
+</head>
+<body>
+  <main class="shell">
+    <section class="workspace">
+      <aside class="panel side">
+        <div class="brand">
+          <div class="mark">EF</div>
+          <div>
+            <h1>EchoFrame</h1>
+            <p id="runState">Idle</p>
+          </div>
+        </div>
+
+        <section class="servicePanel">
+          <div class="panelHeader">
+            <h2>Services</h2>
+            <button id="refreshServices" type="button">Refresh</button>
+          </div>
+          <div id="services" class="services"></div>
+        </section>
+
+        <div class="health" id="health"></div>
+
+        <label class="field">
+          <span>Avatar</span>
+          <input id="avatarInput" type="file" accept="image/png,image/jpeg,image/webp">
+        </label>
+
+        <div class="cameraTools">
+          <button id="cameraOpen" type="button">Take Photo</button>
+          <button id="cameraShot" class="primary" type="button" hidden>Capture</button>
+          <button id="cameraClose" type="button" hidden>Close</button>
+        </div>
+
+        <div id="cameraBox" class="cameraBox" hidden>
+          <video id="cameraVideo" autoplay playsinline muted></video>
+        </div>
+
+        <div class="avatarPreview">
+          <img id="avatarPreview" alt="">
+        </div>
+      </aside>
+
+      <section class="panel main">
+        <div class="toolbar">
+          <div class="modeGroup" role="group" aria-label="Mode">
+            <button class="mode active" data-mode="fast" type="button">Fast</button>
+            <button class="mode" data-mode="wan_loop" type="button">Wan Loop</button>
+            <button class="mode" data-mode="wan" type="button">Wan Full</button>
+          </div>
+          <button id="refreshHealth" type="button">Refresh</button>
+        </div>
+
+        <div class="settingsRow">
+          <label class="field resolutionField">
+            <span>Resolution <output id="resolutionValue">320</output></span>
+            <input id="resolutionRange" type="range" min="120" max="512" step="8" value="320">
+          </label>
+          <label class="field resolutionNumber">
+            <span>Size</span>
+            <input id="resolutionNumber" type="number" min="120" max="512" step="8" value="320">
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Message</span>
+          <textarea id="message" rows="4" placeholder="Ask the avatar..."></textarea>
+        </label>
+
+        <label class="field grow">
+          <span>Manual Reply</span>
+          <textarea id="replyOverride" rows="4" placeholder="Reply text..."></textarea>
+        </label>
+
+        <div class="row">
+          <label class="field">
+            <span>Voice ID</span>
+            <input id="voiceId" type="text" value="4988cee6">
+          </label>
+          <div class="actions">
+            <button id="send" class="primary" type="button">Generate</button>
+            <button id="stop" class="danger" type="button" disabled>Stop</button>
+          </div>
+        </div>
+
+        <section class="stagePanel">
+          <h2>Run Status</h2>
+          <div id="stageStatus" class="stageStatus"></div>
+        </section>
+
+        <div class="resultGrid">
+          <section class="output">
+            <h2>Reply</h2>
+            <p id="reply"></p>
+            <dl>
+              <dt>CosyVoice</dt>
+              <dd id="instruct"></dd>
+              <dt>TTS Sent</dt>
+              <dd id="ttsSent"></dd>
+              <dt>Wan2.2</dt>
+              <dd id="wanPrompt"></dd>
+              <dt>Audio</dt>
+              <dd id="duration"></dd>
+              <dt>Resolution</dt>
+              <dd id="resultResolution"></dd>
+              <dt>Timings</dt>
+              <dd id="timings"></dd>
+            </dl>
+          </section>
+          <section class="output media">
+            <h2>Video</h2>
+            <video id="video" controls playsinline></video>
+            <audio id="audio" controls></audio>
+          </section>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script src="/static/app.js?v=13"></script>
+</body>
+</html>

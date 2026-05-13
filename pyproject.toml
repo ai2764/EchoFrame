@@ -1,0 +1,17 @@
+[project]
+name = "echoframe"
+version = "0.1.0"
+description = "Local conversational digital human workflow using LLM, TTS, video generation, and lip sync modules."
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "httpx",
+    "pydantic-settings",
+    "python-multipart",
+    "Pillow",
+    "huggingface_hub",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

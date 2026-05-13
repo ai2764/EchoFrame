@@ -1,0 +1,2 @@
+"""Local talking avatar app."""
+
