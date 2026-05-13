@@ -120,23 +120,26 @@ class LLMClient:
 
     def _prompt(self, message: str) -> str:
         return f"""
-You are the brain of a Chinese AI-news commentator digital avatar.
 The user says:
 {message}
 
 Return strict JSON only. No markdown.
 Schema:
 {{
-  "reply": "Simplified Chinese spoken reply, max {self.settings.max_reply_chars} Chinese chars",
-  "cosyvoice_instruct": "Simplified Chinese voice style for CosyVoice, short",
+  "reply": "spoken reply in the same language as the user's input, max {self.settings.max_reply_chars} characters",
+  "cosyvoice_instruct": "voice delivery style in the same language as the user's input, short",
   "wan_prompt": "English Wan2.2 image-to-video prompt for a square talking avatar base video"
 }}
 
 Rules:
-- reply must sound conversational and analytical, not a news copy.
+- Do not add a persona, occupation, backstory, or role-play identity.
+- Reply directly to the user's message.
+- Match the user's input language. If the user mixes languages, use the main language.
+- Keep reply natural, concise, and conversational.
 - cosyvoice_instruct should describe delivery style only, short and conservative.
-- Prefer stable styles such as "平稳、自然、清晰". Avoid dramatic emotion, 播音腔, 夸张,
-  撒娇, 喊叫, whispered delivery, or role-playing.
+- Prefer stable styles such as calm, natural, and clear. Avoid dramatic emotion,
+  broadcasting voice, exaggerated delivery, seductive delivery, shouting,
+  whispered delivery, or role-playing.
 - wan_prompt must preserve the same person from the input image.
 - wan_prompt should describe a front-facing bust shot, subtle blinking, slight nodding,
   small shoulder movement, steady camera, clean studio lighting.
@@ -194,24 +197,23 @@ Rules:
 
     def _fallback(self, message: str) -> dict:
         msg = (message or "").strip()
-        if msg:
-            reply = (
-                "\u6211\u7684\u521d\u6b65\u5224\u65ad\u662f\uff1a"
-                "\u8fd9\u4ef6\u4e8b\u4e0d\u53ea\u770b\u70ed\u5ea6\uff0c"
-                "\u66f4\u8981\u770b\u5b83\u4f1a\u6539\u53d8\u54ea\u4e2a\u5177\u4f53\u73af\u8282\u3002"
-            )
+        if self._looks_english(msg):
+            reply = "I understand. Here is a direct, concise response to what you said."
+            instruct = "calm, natural, clear"
         else:
-            reply = (
-                "\u6211\u7684\u5224\u65ad\u662f\uff1a"
-                "\u5148\u770b\u5b9e\u9645\u843d\u5730\uff0c"
-                "\u518d\u770b\u5b83\u662f\u4e0d\u662f\u771f\u6b63\u964d\u4f4e\u4e86\u6210\u672c\u3002"
-            )
+            reply = "\u6211\u7406\u89e3\u4e86\uff0c\u6211\u4f1a\u76f4\u63a5\u3001\u7b80\u6d01\u5730\u56de\u5e94\u4f60\u7684\u5185\u5bb9\u3002"
+            instruct = "\u5e73\u7a33\u3001\u81ea\u7136\u3001\u6e05\u6670"
         return {
             "reply": reply,
-            "cosyvoice_instruct": "\u5e73\u7a33\u3001\u81ea\u7136\u3001\u6e05\u6670",
+            "cosyvoice_instruct": instruct,
             "wan_prompt": (
-                "A front-facing AI news commentator avatar in a clean modern studio, "
-                "medium close-up bust shot, subtle blinking, slight nodding, small shoulder movement, "
-                "calm confident expression, steady camera, soft studio lighting."
+                "A front-facing talking avatar, medium close-up bust shot, subtle blinking, "
+                "slight nodding, small shoulder movement, calm natural expression, "
+                "steady camera, soft studio lighting."
             ),
         }
+
+    def _looks_english(self, text: str) -> bool:
+        letters = sum(1 for ch in text if "a" <= ch.lower() <= "z")
+        cjk = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+        return letters > cjk
