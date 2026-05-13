@@ -22,6 +22,7 @@ The repository is intentionally lightweight. It contains the EchoFrame UI/API, w
 - Release package that ships prepared runtimes, engines, ffmpeg, and launch scripts.
 - Model weights are still not bundled in git or in the initial portable folder.
 - First run checks GPU/disk, extracts runtime archives, downloads required models into package-relative `models/`, writes config, starts services, then runs health checks.
+- Testers run `start.ps1` every time; it handles both first launch and later launches.
 - Build the portable package skeleton with `.\packaging\windows\New-PortablePackage.ps1`; build the local release package with `.\packaging\windows\Build-LocalPortablePackage.ps1`.
 - See [packaging/windows/README.md](packaging/windows/README.md).
 

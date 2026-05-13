@@ -62,7 +62,7 @@ foreach ($file in @(
     Copy-Item -LiteralPath (Join-Path $RepoRoot $file) -Destination (Join-Path $AppRoot $file) -Force
 }
 
-foreach ($file in @("EchoFrame-FirstRun.ps1", "EchoFrame-Start.ps1", "EchoFrame-Stop.ps1")) {
+foreach ($file in @("start.ps1", "EchoFrame-FirstRun.ps1", "EchoFrame-Start.ps1", "EchoFrame-Stop.ps1")) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $OutPath $file) -Force
 }
 
@@ -72,4 +72,4 @@ foreach ($file in @("portable.env.example", "service-manifest.json", "model-mani
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "README.md") -Destination (Join-Path $OutPath "README-WindowsPortable.md") -Force
 
 Write-Output "Created portable package skeleton: $OutPath"
-Write-Output "Next: add prepared runtimes under runtime/ and engines/, then run EchoFrame-FirstRun.ps1."
+Write-Output "Next: add prepared runtimes under runtime/ and engines/, then run start.ps1."

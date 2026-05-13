@@ -32,6 +32,7 @@ EchoFramePortable/
     .env
     service-manifest.json
     model-manifest.json
+  start.ps1
   EchoFrame-FirstRun.ps1
   EchoFrame-Start.ps1
   EchoFrame-Stop.ps1
@@ -73,7 +74,14 @@ For a local release build on a prepared Windows machine, run:
 
 That builder copies only release assets into `dist/`, packs CosyVoice and MuseTalk conda envs as first-run archives, builds a portable ComfyUI Python archive, copies ffmpeg, and copies the required engines/custom nodes. It reads local engine paths from `.env` when parameters are not provided. `dist/` is ignored by git.
 
-## First Run
+## Start
+
+`start.ps1` is the user-facing entry point. It is safe to run on first launch and on later launches:
+
+- On first launch it extracts missing runtimes, writes config, downloads missing models, starts services, and opens the UI.
+- On later launches it skips already extracted runtimes and already downloaded models, refreshes package-relative config, starts services, and opens the UI.
+
+The startup flow:
 
 1. Check NVIDIA driver via `nvidia-smi`.
 2. Check free disk space.
@@ -86,7 +94,7 @@ That builder copies only release assets into `dist/`, packs CosyVoice and MuseTa
 
 The scripts in this folder are scaffolding for release packaging. They intentionally avoid machine-specific paths.
 
-`EchoFrame-FirstRun.ps1` writes `config/.env` with package-relative paths such as `../runtime/...`, `../engines/...`, and `../models/...`, then launches the app with `ECHOFRAME_ENV_FILE=../config/.env`. This keeps portable user config outside the repo-style app folder without baking one machine's install path into the package.
+`start.ps1` writes `config/.env` with package-relative paths such as `../runtime/...`, `../engines/...`, and `../models/...`, then launches the app with `ECHOFRAME_ENV_FILE=../config/.env`. This keeps portable user config outside the repo-style app folder without baking one machine's install path into the package. `EchoFrame-FirstRun.ps1` remains as a compatibility wrapper.
 
 ## Tester Handoff
 
@@ -103,7 +111,7 @@ Smoke test without downloading models:
 
 ```powershell
 cd EchoFramePortable
-.\EchoFrame-FirstRun.ps1 -SkipDownload -NoStart
+.\start.ps1 -SkipDownload -NoStart
 ```
 
 This should extract runtimes and write `config\.env`; missing model messages are expected in this mode.
@@ -112,7 +120,7 @@ Full tester flow:
 
 ```powershell
 cd EchoFramePortable
-.\EchoFrame-FirstRun.ps1
+.\start.ps1
 ```
 
 After first run opens the UI, use a small 320px output test first. Keep `WAN_PROFILE=wan22_14b_i2v`; the 5B profile remains experimental because local tests showed visible image artifacts.

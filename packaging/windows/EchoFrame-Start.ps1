@@ -36,7 +36,7 @@ function Get-DotEnvValue {
 }
 
 if (-not (Test-Path $EnvPath)) {
-    throw "Portable config was not found at $EnvPath. Run EchoFrame-FirstRun.ps1 first."
+    throw "Portable config was not found at $EnvPath. Run start.ps1 first."
 }
 
 Push-Location $AppRoot
