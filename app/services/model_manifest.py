@@ -144,13 +144,19 @@ class ModelManifest:
         return files
 
     def _download_tts(self) -> None:
-        script = self.settings.tts_root / "download_model.py"
-        if not script.exists():
-            raise RuntimeError("TTS download_model.py is missing")
+        model_dir = self.settings.tts_model_dir or self.settings.tts_root / "pretrained_models" / "CosyVoice2-0.5B"
+        if model_dir.exists() and any(model_dir.iterdir()):
+            return
+        model_dir.parent.mkdir(parents=True, exist_ok=True)
+        code = (
+            "from modelscope.hub.snapshot_download import snapshot_download; "
+            f"snapshot_download('iic/CosyVoice2-0.5B', local_dir={str(model_dir.resolve())!r})"
+        )
         self._run(
             [
                 self.settings.tts_python,
-                path_for_cwd(script, self.settings.tts_root),
+                "-c",
+                code,
             ],
             cwd=self.settings.tts_root,
         )
@@ -180,8 +186,18 @@ class ModelManifest:
             if target.exists():
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
-            source = hf_hub_download(repo_id=WAN_REPO, filename=repo_pattern.format(name=filename))
-            shutil.copy2(source, target)
+            repo_filename = repo_pattern.format(name=filename)
+            download_parent = target.parent / ".hf-downloads"
+            download_dir = download_parent / setting_name
+            source = Path(hf_hub_download(repo_id=WAN_REPO, filename=repo_filename, local_dir=download_dir))
+            if not source.exists():
+                raise RuntimeError(f"downloaded file was not found: {repo_filename}")
+            shutil.move(str(source), target)
+            shutil.rmtree(download_dir, ignore_errors=True)
+            try:
+                download_parent.rmdir()
+            except OSError:
+                pass
 
     def _run(self, cmd: list[str], cwd: Path | None = None) -> None:
         if cwd:

@@ -28,6 +28,7 @@ New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 foreach ($dir in @(
     "data",
     "models",
+    "runtime-archives",
     "runtime/app-python",
     "runtime/cosyvoice-python",
     "runtime/musetalk-python",

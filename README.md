@@ -19,10 +19,10 @@ The repository is intentionally lightweight. It contains the EchoFrame UI/API, w
 
 **Windows portable profile**
 
-- Planned release package that ships prepared runtimes and launch scripts.
-- Models are still not bundled.
-- First run checks GPU/disk, downloads required models into a configured model directory, writes config, starts services, then runs health checks.
-- Build the portable package skeleton with `.\packaging\windows\New-PortablePackage.ps1`.
+- Release package that ships prepared runtimes, engines, ffmpeg, and launch scripts.
+- Model weights are still not bundled in git or in the initial portable folder.
+- First run checks GPU/disk, extracts runtime archives, downloads required models into package-relative `models/`, writes config, starts services, then runs health checks.
+- Build the portable package skeleton with `.\packaging\windows\New-PortablePackage.ps1`; build the local release package with `.\packaging\windows\Build-LocalPortablePackage.ps1`.
 - See [packaging/windows/README.md](packaging/windows/README.md).
 
 ## Default Services
@@ -62,10 +62,10 @@ Native CosyVoice support remains in the code for portable builds or advanced loc
 
 ## Voice Presets
 
-The repo includes two small CosyVoice zero-shot reference clips under `assets/voices/`:
+The repo includes small CosyVoice zero-shot reference clips under `assets/voices/`. Current defaults are English-friendly:
 
-- `TTS_FEMALE_VOICE_ID=4988cee6`
-- `TTS_MALE_VOICE_ID=21897fae`
+- `TTS_FEMALE_VOICE_ID=d36d10b9`
+- `TTS_MALE_VOICE_ID=c715d869`
 
 These are reference audio files, not model weights. Replace `assets/voices/presets.json` or point `TTS_PRESETS_FILE` elsewhere if you want different voices.
 

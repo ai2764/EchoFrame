@@ -1,7 +1,8 @@
 param(
     [string]$ModelDir = "models",
     [switch]$SkipDownload,
-    [switch]$NoStart
+    [switch]$NoStart,
+    [switch]$KeepRuntimeArchives
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,8 +52,47 @@ function Set-DotEnvValue {
     Set-Content -Path $Path -Value $lines -Encoding utf8
 }
 
+function Expand-RuntimeArchive {
+    param(
+        [string]$ArchiveName,
+        [string]$TargetRelativePath,
+        [string]$ExpectedRelativePath,
+        [switch]$Conda
+    )
+    $target = Resolve-PackagePath $TargetRelativePath
+    $expected = Resolve-PackagePath $ExpectedRelativePath
+    $archive = Join-Path $Root "runtime-archives/$ArchiveName.zip"
+    if (-not (Test-Path $expected)) {
+        if (-not (Test-Path $archive)) {
+            throw "Runtime archive is missing: $archive"
+        }
+        New-Item -ItemType Directory -Force -Path $target | Out-Null
+        & tar.exe -xf $archive -C $target
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to extract runtime archive: $archive"
+        }
+    }
+    if ($Conda) {
+        $unpack = Join-Path $target "Scripts/conda-unpack.exe"
+        if (Test-Path $unpack) {
+            & $unpack
+            if ($LASTEXITCODE -ne 0) {
+                throw "conda-unpack failed for $TargetRelativePath"
+            }
+        }
+    }
+    if (-not $KeepRuntimeArchives -and (Test-Path $expected) -and (Test-Path $archive)) {
+        Remove-Item -LiteralPath $archive -Force
+    }
+}
+
 New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+
+Expand-RuntimeArchive -ArchiveName "app-python" -TargetRelativePath "runtime/app-python" -ExpectedRelativePath "runtime/app-python/python.exe"
+Expand-RuntimeArchive -ArchiveName "cosyvoice-python" -TargetRelativePath "runtime/cosyvoice-python" -ExpectedRelativePath "runtime/cosyvoice-python/python.exe" -Conda
+Expand-RuntimeArchive -ArchiveName "musetalk-python" -TargetRelativePath "runtime/musetalk-python" -ExpectedRelativePath "runtime/musetalk-python/python.exe" -Conda
+Expand-RuntimeArchive -ArchiveName "comfyui-python" -TargetRelativePath "runtime/comfyui-python" -ExpectedRelativePath "runtime/comfyui-python/python.exe"
 
 $ModelDirRel = ($ModelDir -replace "\\", "/").Trim("/")
 if (-not $ModelDirRel) {
@@ -62,6 +102,28 @@ $ModelDirPath = Resolve-PackagePath $ModelDirRel
 New-Item -ItemType Directory -Force -Path $ModelDirPath | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $ModelDirPath "comfyui") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $ModelDirPath "cosyvoice") | Out-Null
+
+$ComfyExtraModelPaths = Join-Path $Root "engines/comfyui/extra_model_paths.yaml"
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ComfyExtraModelPaths) | Out-Null
+@"
+echoframe:
+    base_path: ../../models/comfyui
+    diffusion_models: diffusion_models
+    text_encoders: text_encoders
+    vae: vae
+    loras: loras
+"@ | Set-Content -Path $ComfyExtraModelPaths -Encoding utf8
+
+$DownloadCacheDir = Join-Path $ModelDirPath ".download-cache"
+$HfCacheDir = Join-Path $DownloadCacheDir "huggingface"
+$ModelScopeCacheDir = Join-Path $DownloadCacheDir "modelscope"
+New-Item -ItemType Directory -Force -Path $HfCacheDir | Out-Null
+New-Item -ItemType Directory -Force -Path $ModelScopeCacheDir | Out-Null
+$env:HF_HOME = $HfCacheDir
+$env:HF_HUB_CACHE = Join-Path $HfCacheDir "hub"
+$env:HUGGINGFACE_HUB_CACHE = $env:HF_HUB_CACHE
+$env:MODELSCOPE_CACHE = $ModelScopeCacheDir
+$env:MODELSCOPE_HOME = $ModelScopeCacheDir
 
 if (-not (Get-Command nvidia-smi -ErrorAction SilentlyContinue)) {
     Write-Warning "nvidia-smi was not found. Install NVIDIA drivers before running GPU workflows."

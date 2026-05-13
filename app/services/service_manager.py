@@ -216,6 +216,9 @@ class ServiceManager:
         ]
         if self.settings.comfy_base_dir:
             args += ["--base-directory", path_for_cwd(self.settings.comfy_base_dir, self.settings.comfy_root)]
+        extra_model_paths = self.settings.comfy_root / "extra_model_paths.yaml"
+        if extra_model_paths.exists():
+            args += ["--extra-model-paths-config", path_for_cwd(extra_model_paths, self.settings.comfy_root)]
         self._popen("comfyui", args, cwd=self.settings.comfy_root, env=os.environ.copy())
 
     async def _wait_online(self, name: str, timeout: int) -> EngineStatus:

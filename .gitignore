@@ -6,6 +6,7 @@ __pycache__/
 .venv/
 venv/
 data/
+dist/
 engines/
 models/
 pretrained_models/
