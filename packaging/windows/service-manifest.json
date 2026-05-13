@@ -1,0 +1,35 @@
+{
+  "profile": "portable",
+  "services": [
+    {
+      "name": "echoframe",
+      "default": "http://0.0.0.0:7860",
+      "owned_by_portable": true
+    },
+    {
+      "name": "lm_studio",
+      "default": "http://127.0.0.1:1234/v1",
+      "owned_by_portable": false
+    },
+    {
+      "name": "cosyvoice",
+      "default": "native worker",
+      "owned_by_portable": true
+    },
+    {
+      "name": "comfyui",
+      "default": "http://127.0.0.1:8000",
+      "owned_by_portable": true
+    },
+    {
+      "name": "musetalk",
+      "default": "on-demand process",
+      "owned_by_portable": true
+    },
+    {
+      "name": "ffmpeg",
+      "default": "runtime/ffmpeg",
+      "owned_by_portable": true
+    }
+  ]
+}

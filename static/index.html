@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>EchoFrame</title>
-  <link rel="stylesheet" href="/static/styles.css?v=5">
+  <link rel="stylesheet" href="/static/styles.css?v=8">
 </head>
 <body>
   <main class="shell">
@@ -14,34 +14,49 @@
           <div class="mark">EF</div>
           <div>
             <h1>EchoFrame</h1>
-            <p id="runState">Idle</p>
+            <p id="runState"></p>
           </div>
         </div>
 
         <section class="servicePanel">
           <div class="panelHeader">
-            <h2>Services</h2>
-            <button id="refreshServices" type="button">Refresh</button>
+            <h2 data-i18n="services">Services</h2>
+            <button id="refreshServices" type="button" data-i18n="refresh">Refresh</button>
           </div>
           <div id="services" class="services"></div>
         </section>
 
-        <div class="health" id="health"></div>
+        <section class="gpuPanel" id="gpuPanel">
+          <div class="panelHeader">
+            <h2 data-i18n="gpu">GPU</h2>
+            <span id="gpuBadge" class="statusBadge bad">OFF</span>
+          </div>
+          <div class="gpuName" id="gpuName" data-i18n="gpuWaiting">Waiting for GPU status</div>
+          <div class="meterBlock">
+            <div class="meterLabel">
+              <span data-i18n="utilization">Utilization</span>
+              <strong id="gpuUtilText">--%</strong>
+            </div>
+            <div class="meter"><span id="gpuUtilBar"></span></div>
+          </div>
+          <div class="meterBlock">
+            <div class="meterLabel">
+              <span>VRAM</span>
+              <strong id="gpuMemText">-- / --</strong>
+            </div>
+            <div class="meter"><span id="gpuMemBar"></span></div>
+          </div>
+          <div class="gpuMeta">
+            <span id="gpuTemp">-- C</span>
+            <span id="gpuProcessCount"></span>
+          </div>
+          <div id="gpuProcesses" class="gpuProcesses"></div>
+        </section>
 
         <label class="field">
-          <span>Avatar</span>
+          <span data-i18n="avatar">Avatar</span>
           <input id="avatarInput" type="file" accept="image/png,image/jpeg,image/webp">
         </label>
-
-        <div class="cameraTools">
-          <button id="cameraOpen" type="button">Take Photo</button>
-          <button id="cameraShot" class="primary" type="button" hidden>Capture</button>
-          <button id="cameraClose" type="button" hidden>Close</button>
-        </div>
-
-        <div id="cameraBox" class="cameraBox" hidden>
-          <video id="cameraVideo" autoplay playsinline muted></video>
-        </div>
 
         <div class="avatarPreview">
           <img id="avatarPreview" alt="">
@@ -50,79 +65,88 @@
 
       <section class="panel main">
         <div class="toolbar">
-          <div class="modeGroup" role="group" aria-label="Mode">
-            <button class="mode active" data-mode="fast" type="button">Fast</button>
-            <button class="mode" data-mode="wan_loop" type="button">Wan Loop</button>
-            <button class="mode" data-mode="wan" type="button">Wan Full</button>
+          <div class="modeGroup" role="group" aria-label="Mode" data-i18n-aria="mode">
+            <button class="mode active" data-mode="fast" type="button" data-i18n="modeFast">Fast</button>
+            <button class="mode" data-mode="wan_loop" type="button" data-i18n="modeWanLoop">Wan Loop</button>
+            <button class="mode" data-mode="wan" type="button" data-i18n="modeWanFull">Wan Full</button>
           </div>
-          <button id="refreshHealth" type="button">Refresh</button>
+          <div class="toolbarActions">
+            <div class="langGroup" role="group" aria-label="Language" data-i18n-aria="language">
+              <button class="lang" data-lang="zh" type="button">中文</button>
+              <button class="lang" data-lang="en" type="button">EN</button>
+            </div>
+            <button id="refreshAllStatus" type="button" data-i18n="refresh">Refresh</button>
+          </div>
         </div>
 
         <div class="settingsRow">
           <label class="field resolutionField">
-            <span>Resolution <output id="resolutionValue">320</output></span>
+            <span><span data-i18n="resolution">Resolution</span> <output id="resolutionValue">320</output></span>
             <input id="resolutionRange" type="range" min="120" max="512" step="8" value="320">
           </label>
           <label class="field resolutionNumber">
-            <span>Size</span>
+            <span data-i18n="size">Size</span>
             <input id="resolutionNumber" type="number" min="120" max="512" step="8" value="320">
           </label>
         </div>
 
         <label class="field">
-          <span>Message</span>
-          <textarea id="message" rows="4" placeholder="Ask the avatar..."></textarea>
+          <span data-i18n="message">Message</span>
+          <textarea id="message" rows="4" placeholder="Ask the avatar..." data-i18n-placeholder="messagePlaceholder"></textarea>
         </label>
 
         <label class="field grow">
-          <span>Manual Reply</span>
-          <textarea id="replyOverride" rows="4" placeholder="Reply text..."></textarea>
+          <span data-i18n="spokenText">口播文本</span>
+          <textarea id="replyOverride" rows="4" placeholder="输入要直接生成的口播文本..." data-i18n-placeholder="spokenTextPlaceholder"></textarea>
         </label>
 
         <div class="row">
           <label class="field">
-            <span>Voice ID</span>
-            <input id="voiceId" type="text" value="4988cee6">
+            <span data-i18n="voice">Voice</span>
+            <select id="voiceChoice">
+              <option value="female" selected data-i18n="voiceFemale">Female</option>
+              <option value="male" data-i18n="voiceMale">Male</option>
+            </select>
           </label>
           <div class="actions">
-            <button id="send" class="primary" type="button">Generate</button>
-            <button id="stop" class="danger" type="button" disabled>Stop</button>
+            <button id="send" class="primary" type="button" data-i18n="generate">Generate</button>
+            <button id="stop" class="danger" type="button" disabled data-i18n="stop">Stop</button>
           </div>
         </div>
 
         <section class="stagePanel">
-          <h2>Run Status</h2>
+          <h2 data-i18n="runStatus">Run Status</h2>
           <div id="stageStatus" class="stageStatus"></div>
+          <div id="runError" class="runError" hidden></div>
         </section>
 
         <div class="resultGrid">
           <section class="output">
-            <h2>Reply</h2>
+            <h2 data-i18n="reply">Reply</h2>
             <p id="reply"></p>
             <dl>
               <dt>CosyVoice</dt>
               <dd id="instruct"></dd>
-              <dt>TTS Sent</dt>
+              <dt data-i18n="ttsSent">TTS Sent</dt>
               <dd id="ttsSent"></dd>
               <dt>Wan2.2</dt>
               <dd id="wanPrompt"></dd>
-              <dt>Audio</dt>
+              <dt data-i18n="audio">Audio</dt>
               <dd id="duration"></dd>
-              <dt>Resolution</dt>
+              <dt data-i18n="resolution">Resolution</dt>
               <dd id="resultResolution"></dd>
-              <dt>Timings</dt>
+              <dt data-i18n="timings">Timings</dt>
               <dd id="timings"></dd>
             </dl>
           </section>
           <section class="output media">
-            <h2>Video</h2>
+            <h2 data-i18n="video">Video</h2>
             <video id="video" controls playsinline></video>
-            <audio id="audio" controls></audio>
           </section>
         </div>
       </section>
     </section>
   </main>
-  <script src="/static/app.js?v=13"></script>
+  <script src="/static/app.js?v=25"></script>
 </body>
 </html>

@@ -26,3 +26,4 @@ server.err
 *.wav
 *.flac
 *.mp3
+!assets/voices/*.wav

@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from app.config import Settings
+from app.paths import command_for_cwd, path_for_cwd
 from app.services.run_control import RunState, WorkflowCancelled
 
 
@@ -93,25 +94,33 @@ class MuseTalkClient:
         run_dir: Path,
         run_state: RunState | None,
     ) -> None:
-        cfg_path = run_dir / "musetalk.yaml"
+        root = self.settings.musetalk_root
+        work_dir = root / ".echoframe" / run_dir.name
+        work_dir.mkdir(parents=True, exist_ok=True)
+        work_audio = work_dir / audio_path.name
+        work_video = work_dir / video_path.name
+        shutil.copy2(audio_path, work_audio)
+        shutil.copy2(video_path, work_video)
+
+        cfg_path = work_dir / "musetalk.yaml"
         cfg_path.write_text(
             "task_0:\n"
-            f" video_path: \"{video_path.as_posix()}\"\n"
-            f" audio_path: \"{audio_path.as_posix()}\"\n"
+            f" video_path: \"{path_for_cwd(work_video, root, require_relative=True)}\"\n"
+            f" audio_path: \"{path_for_cwd(work_audio, root, require_relative=True)}\"\n"
             f" bbox_shift: {self.settings.musetalk_bbox_shift}\n",
             encoding="utf-8",
         )
-        result_dir = run_dir / "musetalk_results"
+        result_dir = work_dir / "musetalk_results"
         cmd = [
-            self.settings.musetalk_python,
+            command_for_cwd(self.settings.musetalk_python, root),
             "-m",
             "scripts.inference",
             "--gpu_id",
             self.settings.musetalk_cuda_visible_devices.split(",")[0] if self.settings.musetalk_cuda_visible_devices else "0",
             "--inference_config",
-            str(cfg_path),
+            path_for_cwd(cfg_path, root, require_relative=True),
             "--result_dir",
-            str(result_dir),
+            path_for_cwd(result_dir, root, require_relative=True),
             "--unet_model_path",
             "models/musetalkV15/unet.pth",
             "--unet_config",
@@ -134,9 +143,9 @@ class MuseTalkClient:
         if self.settings.musetalk_use_float16:
             cmd.append("--use_float16")
         if self.settings.musetalk_ffmpeg_dir:
-            cmd += ["--ffmpeg_path", self.settings.musetalk_ffmpeg_dir]
+            cmd += ["--ffmpeg_path", path_for_cwd(self.settings.musetalk_ffmpeg_dir, root, require_relative=True)]
         before = time.time()
-        self._run(cmd, cwd=self.settings.musetalk_root, timeout=self.settings.musetalk_timeout_seconds, run_state=run_state)
+        self._run(cmd, cwd=root, timeout=self.settings.musetalk_timeout_seconds, run_state=run_state)
         candidates = [
             p
             for p in result_dir.glob("**/*.mp4")
@@ -150,11 +159,12 @@ class MuseTalkClient:
     def _run(self, cmd: list[str], cwd: Path, timeout: int, run_state: RunState | None) -> None:
         env = os.environ.copy()
         if self.settings.musetalk_ffmpeg_dir:
-            env["PATH"] = f"{self.settings.musetalk_ffmpeg_dir}{os.pathsep}{env.get('PATH', '')}"
+            ffmpeg_dir = path_for_cwd(self.settings.musetalk_ffmpeg_dir, cwd)
+            env["PATH"] = f"{ffmpeg_dir}{os.pathsep}{env.get('PATH', '')}"
         if self.settings.musetalk_cuda_visible_devices:
             env["CUDA_VISIBLE_DEVICES"] = self.settings.musetalk_cuda_visible_devices
         env["PYTHONPATH"] = (
-            f"{self.settings.musetalk_root}{os.pathsep}{env.get('PYTHONPATH', '')}"
+            f"{path_for_cwd(self.settings.musetalk_root, cwd)}{os.pathsep}{env.get('PYTHONPATH', '')}"
         )
         process = subprocess.Popen(
             cmd,

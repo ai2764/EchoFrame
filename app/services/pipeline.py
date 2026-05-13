@@ -86,7 +86,7 @@ class TalkingAvatarPipeline:
         timings["llm"] = round(time.perf_counter() - start, 3)
         yield {"type": "stage", "stage": "llm", "status": "done", "duration": timings["llm"]}
         await asyncio.sleep(0.01)
-        voice_id = req.voice_id or self.settings.tts_default_voice_id
+        voice_id = self._voice_id(req)
 
         audio_path = out_dir / "voice.wav"
         start = time.perf_counter()
@@ -108,6 +108,8 @@ class TalkingAvatarPipeline:
         await asyncio.sleep(0.01)
         self._check_cancel(run_state)
         audio_duration = await asyncio.to_thread(self.media.duration, audio_path)
+        if audio_duration < 0.2:
+            raise RuntimeError("TTS audio is too short for video generation")
         timings["audio_probe"] = round(time.perf_counter() - start, 3)
         yield {"type": "stage", "stage": "audio_probe", "status": "done", "duration": timings["audio_probe"]}
         await asyncio.sleep(0.01)
@@ -200,3 +202,10 @@ class TalkingAvatarPipeline:
         value = max(128, output_resolution)
         value = ((value + 15) // 16) * 16
         return min(self.settings.resolution_max, value)
+
+    def _voice_id(self, req: ChatRequest) -> str:
+        if req.voice == "male":
+            return self.settings.tts_male_voice_id
+        if req.voice == "female":
+            return self.settings.tts_female_voice_id
+        return req.voice_id or self.settings.tts_default_voice_id

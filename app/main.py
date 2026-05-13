@@ -1,6 +1,7 @@
 import json
 import subprocess
 import asyncio
+from contextlib import asynccontextmanager
 from functools import lru_cache
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
@@ -8,18 +9,29 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import Settings, get_settings
-from app.schemas import ChatRequest, ChatResponse, EngineActionResponse, EngineStatus, HealthResponse, ServiceStatus
+from app.schemas import ChatRequest, ChatResponse, EngineActionResponse, EngineStatus, GpuStatus, HealthResponse, ServiceStatus
 from app.services.comfy import ComfyClient
-from app.services.gpu import gpu_summary
+from app.services.gpu import gpu_status as get_gpu_status, gpu_summary
 from app.services.llm import LLMClient
 from app.services.musetalk import MuseTalkClient
 from app.services.pipeline import TalkingAvatarPipeline
 from app.services.run_control import WorkflowCancelled, run_controller
+from app.services.service_manifest import service_manifest
 from app.services.service_manager import ServiceManager
+from app.services.startup_health import startup_health
 from app.services.tts import TTSClient
 
 
-app = FastAPI(title="EchoFrame")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    s = get_settings()
+    asyncio.create_task(startup_health.run(s))
+    if s.tts_backend == "native" and s.tts_native_worker and s.tts_preload_on_startup:
+        asyncio.create_task(TTSClient(s).preload())
+    yield
+
+
+app = FastAPI(title="EchoFrame", lifespan=lifespan)
 
 
 @lru_cache
@@ -107,6 +119,16 @@ async def services(manager: ServiceManager = Depends(get_service_manager)):
     return await manager.statuses()
 
 
+@app.get("/api/service-manifest")
+async def service_manifest_endpoint(s: Settings = Depends(get_settings)):
+    return service_manifest(s)
+
+
+@app.get("/api/startup-health")
+async def startup_health_endpoint():
+    return startup_health.snapshot()
+
+
 @app.post("/api/services/{name}/start", response_model=EngineActionResponse)
 async def start_service(name: str, manager: ServiceManager = Depends(get_service_manager)):
     return await manager.start(name)
@@ -145,9 +167,9 @@ async def health(s: Settings = Depends(get_settings)):
     )
 
 
-@app.get("/api/gpu", response_model=ServiceStatus)
+@app.get("/api/gpu", response_model=GpuStatus)
 async def gpu_status():
-    return ServiceStatus(ok=True, detail=gpu_summary())
+    return GpuStatus(**get_gpu_status())
 
 
 def _ffmpeg_health(s: Settings) -> tuple[bool, str]:

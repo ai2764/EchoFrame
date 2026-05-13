@@ -19,6 +19,8 @@ class LLMClient:
                 detail = "online"
                 if loaded:
                     detail += "; loaded: " + ", ".join(loaded)
+                elif not self.settings.llm_model.strip():
+                    detail += "; no loaded LLM"
                 return True, detail
             return False, f"HTTP {r.status_code}"
         except Exception as exc:
@@ -26,20 +28,26 @@ class LLMClient:
 
     async def plan_reply(self, message: str) -> dict:
         prompt = self._prompt(message)
+        model = self.settings.llm_model.strip()
+        instance_id = ""
+        loaded_by_us = False
         url = self.settings.llm_base_url.rstrip("/") + "/chat/completions"
         headers = {}
         if self.settings.llm_api_key:
             headers["Authorization"] = f"Bearer {self.settings.llm_api_key}"
-        payload = {
-            "model": self.settings.llm_model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.4,
-            "max_tokens": 1200,
-        }
-        instance_id = self.settings.llm_model
         try:
             if self.settings.llm_load_before_request:
                 instance_id = await self.load_model()
+                model = instance_id or model
+                loaded_by_us = True
+            if not model:
+                model = await self.active_model()
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.4,
+                "max_tokens": 1200,
+            }
             async with httpx.AsyncClient(timeout=self.settings.llm_timeout_seconds) as client:
                 r = await client.post(url, json=payload, headers=headers)
             if r.status_code != 200:
@@ -52,9 +60,15 @@ class LLMClient:
                 raise
             data = self._fallback(message)
         finally:
-            if self.settings.llm_unload_after_request:
+            if self.settings.llm_unload_after_request and loaded_by_us:
                 await self.unload_model(instance_id)
         return self._normalize(data)
+
+    async def active_model(self) -> str:
+        loaded = await self.loaded_instances()
+        if loaded:
+            return loaded[0]
+        raise RuntimeError("LM Studio has no loaded LLM. Load a model in LM Studio or set LLM_MODEL.")
 
     async def loaded_instances(self) -> list[str]:
         try:
@@ -67,6 +81,8 @@ class LLMClient:
             return []
         loaded = []
         for model in body.get("models", []):
+            if model.get("type") not in (None, "llm"):
+                continue
             for inst in model.get("loaded_instances", []) or []:
                 if isinstance(inst, dict):
                     loaded.append(str(inst.get("instance_id") or inst.get("id") or model.get("key")))
@@ -75,6 +91,8 @@ class LLMClient:
         return loaded
 
     async def load_model(self) -> str:
+        if not self.settings.llm_model.strip():
+            raise RuntimeError("LLM_MODEL is required when LLM_LOAD_BEFORE_REQUEST=true")
         payload = {
             "model": self.settings.llm_model,
             "context_length": self.settings.llm_context_length,
@@ -95,7 +113,7 @@ class LLMClient:
 
     async def unload_model(self, instance_id: str) -> None:
         if not instance_id:
-            instance_id = self.settings.llm_model
+            return
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 await client.post(

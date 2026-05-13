@@ -10,9 +10,10 @@ from urllib.parse import urlparse
 from fastapi import HTTPException
 
 from app.config import Settings
+from app.paths import command_for_cwd, path_for_cwd
 from app.schemas import EngineActionResponse, EngineStatus
 from app.services.comfy import ComfyClient
-from app.services.gpu import gpu_summary
+from app.services.gpu import gpu_status
 from app.services.llm import LLMClient
 from app.services.model_manifest import ModelManifest
 from app.services.musetalk import MuseTalkClient
@@ -55,16 +56,19 @@ class ServiceManager:
             installed=installed,
             online=ok,
             models_ok=models_ok,
-            startable=name in {"lm_studio", "cosyvoice", "comfyui"},
+            startable=self._startable(name),
             pid=pid,
             port=port,
         )
 
     async def start(self, name: str) -> EngineActionResponse:
         self._validate_name(name)
-        if name not in {"lm_studio", "cosyvoice", "comfyui"}:
+        if (
+            name not in {"lm_studio", "cosyvoice", "comfyui"}
+            or (name == "cosyvoice" and not self._startable("cosyvoice"))
+        ):
             status = await self.status(name)
-            return EngineActionResponse(ok=status.ok, name=name, action="start", detail="on-demand component", status=status)
+            return EngineActionResponse(ok=status.ok, name=name, action="start", detail="external or on-demand component", status=status)
         status = await self.status(name)
         if status.online:
             return EngineActionResponse(ok=True, name=name, action="start", detail="already online", status=status)
@@ -96,6 +100,9 @@ class ServiceManager:
         if name == "lm_studio":
             self._run_quiet([self.settings.lms_bin, "unload", "--all"])
             self._run_quiet([self.settings.lms_bin, "server", "stop"])
+        elif name == "cosyvoice" and self.settings.tts_backend == "native":
+            status = await self.status(name)
+            return EngineActionResponse(ok=status.ok, name=name, action="stop", detail="no resident service", status=status)
         elif name in {"cosyvoice", "comfyui"}:
             port = self._port_for_service(name)
             if port:
@@ -116,7 +123,7 @@ class ServiceManager:
         status = await self.status(name)
         if status.ok:
             return status
-        if name in {"lm_studio", "cosyvoice", "comfyui"}:
+        if name in {"lm_studio", "comfyui"} or (name == "cosyvoice" and self.settings.tts_backend == "http"):
             action = await self.start(name)
             if action.status and action.status.ok:
                 return action.status
@@ -150,13 +157,18 @@ class ServiceManager:
         if name == "ffmpeg":
             return self._ffmpeg_health()
         if name == "gpu":
-            return True, gpu_summary()
+            status = gpu_status()
+            return bool(status["ok"]), str(status["detail"])
         return False, "unknown"
 
     def _installed(self, name: str) -> bool:
         if name == "lm_studio":
             return self._command_exists(self.settings.lms_bin)
         if name == "cosyvoice":
+            if self.settings.tts_backend == "native":
+                return self.settings.tts_root.exists() and TTSClient(self.settings)._cosyvoice_source_present()
+            if not self.settings.tts_manage_http_service:
+                return True
             return self.settings.tts_root.exists() and (self.settings.tts_root / self.settings.tts_script).exists()
         if name == "comfyui":
             return self.settings.comfy_root.exists() and (self.settings.comfy_root / "main.py").exists()
@@ -203,7 +215,7 @@ class ServiceManager:
             "--disable-auto-launch",
         ]
         if self.settings.comfy_base_dir:
-            args += ["--base-directory", str(self.settings.comfy_base_dir)]
+            args += ["--base-directory", path_for_cwd(self.settings.comfy_base_dir, self.settings.comfy_root)]
         self._popen("comfyui", args, cwd=self.settings.comfy_root, env=os.environ.copy())
 
     async def _wait_online(self, name: str, timeout: int) -> EngineStatus:
@@ -222,7 +234,7 @@ class ServiceManager:
         log_file = log_path.open("a", encoding="utf-8", errors="replace")
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         subprocess.Popen(
-            cmd,
+            [command_for_cwd(cmd[0], cwd), *cmd[1:]],
             cwd=str(cwd),
             env=env,
             stdout=log_file,
@@ -266,6 +278,11 @@ class ServiceManager:
             return True
         return shutil.which(command) is not None
 
+    def _startable(self, name: str) -> bool:
+        if name == "cosyvoice":
+            return self.settings.tts_backend == "http" and self.settings.tts_manage_http_service
+        return name in {"lm_studio", "comfyui"}
+
     def _log_path(self, name: str) -> Path:
         return self.settings.abs_data_dir / "logs" / "engines" / f"{name}.log"
 
@@ -273,6 +290,8 @@ class ServiceManager:
         if name == "lm_studio":
             return self.settings.lms_server_port
         if name == "cosyvoice":
+            if self.settings.tts_backend == "native":
+                return None
             return self._port_from_url(self.settings.tts_url) or self.settings.tts_port
         if name == "comfyui":
             return self._port_from_url(self.settings.comfy_url)

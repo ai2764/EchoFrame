@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import Settings
+from app.paths import command_for_cwd, path_for_cwd
 
 
 WAN_REPO = "Comfy-Org/Wan_2.2_ComfyUI_Repackaged"
@@ -16,6 +17,15 @@ WAN_FILES = [
     ("diffusion_models", "split_files/diffusion_models/{name}", "wan_low_model"),
     ("text_encoders", "split_files/text_encoders/{name}", "wan_clip_model"),
     ("vae", "split_files/vae/{name}", "wan_vae_model"),
+]
+WAN_5B_FILES = [
+    ("diffusion_models", "split_files/diffusion_models/{name}", "wan_5b_model"),
+    ("text_encoders", "split_files/text_encoders/{name}", "wan_clip_model"),
+    ("vae", "split_files/vae/{name}", "wan_5b_vae_model"),
+]
+WAN_LORA_FILES = [
+    ("loras", "split_files/loras/{name}", "wan_high_lora"),
+    ("loras", "split_files/loras/{name}", "wan_low_lora"),
 ]
 
 
@@ -39,6 +49,8 @@ class ModelManifest:
         }
 
     def check_llm(self) -> ModelCheck:
+        if not self.settings.llm_model.strip():
+            return ModelCheck("lm_studio", True, "uses loaded LM Studio model")
         try:
             result = subprocess.run(
                 [self.settings.lms_bin, "ls"],
@@ -56,15 +68,23 @@ class ModelManifest:
             return ModelCheck("lm_studio", False, str(exc))
 
     def check_tts(self) -> ModelCheck:
-        model_dir = self.settings.tts_root / "pretrained_models" / "CosyVoice2-0.5B"
+        if self.settings.tts_backend == "http":
+            ok = self._http_ok(self.settings.tts_url.rstrip("/") + "/health")
+            return ModelCheck(
+                "cosyvoice",
+                ok,
+                "server online" if ok else "CosyVoice HTTP service offline",
+            )
+        model_dir = self.settings.tts_model_dir or self.settings.tts_root / "pretrained_models" / "CosyVoice2-0.5B"
         ok = model_dir.exists() and any(model_dir.iterdir())
-        if not ok and self._http_ok(self.settings.tts_url.rstrip("/") + "/health"):
-            return ModelCheck("cosyvoice", True, "server online")
+        presets = self.settings.tts_presets_file or self.settings.tts_root / "voices" / "presets.json"
+        if ok and not presets.exists():
+            return ModelCheck("cosyvoice", False, "voice presets missing")
         return ModelCheck("cosyvoice", ok, "model present" if ok else "CosyVoice2-0.5B missing")
 
     def check_wan(self) -> ModelCheck:
         missing = []
-        for folder, _, setting_name in WAN_FILES:
+        for folder, _, setting_name in self._wan_files:
             name = str(getattr(self.settings, setting_name))
             target = self.comfy_models_dir / folder / name
             if not target.exists():
@@ -84,8 +104,10 @@ class ModelManifest:
         return ModelCheck("musetalk", ok, "model present" if ok else "missing: " + ", ".join(missing[:4]))
 
     def download_missing(self) -> list[str]:
+        if not self.settings.model_downloads_enabled:
+            raise RuntimeError("model downloads are disabled for this profile; use a portable profile or enable MODEL_DOWNLOADS_ENABLED")
         completed: list[str] = []
-        if not self.check_llm().ok:
+        if self.settings.llm_model.strip() and not self.check_llm().ok:
             self._run([self.settings.lms_bin, "get", self.settings.llm_model, "--gguf", "-y"])
             completed.append("lm_studio")
         if not self.check_tts().ok:
@@ -112,21 +134,36 @@ class ModelManifest:
             return input_parent / "models"
         return self.settings.comfy_root / "models"
 
+    @property
+    def _wan_files(self) -> list[tuple[str, str, str]]:
+        if self.settings.wan_profile == "wan22_5b_ti2v":
+            return list(WAN_5B_FILES)
+        files = list(WAN_FILES)
+        if self.settings.wan_use_4step_lora:
+            files.extend(WAN_LORA_FILES)
+        return files
+
     def _download_tts(self) -> None:
         script = self.settings.tts_root / "download_model.py"
         if not script.exists():
             raise RuntimeError("TTS download_model.py is missing")
-        self._run([self.settings.tts_python, str(script)], cwd=self.settings.tts_root)
+        self._run(
+            [
+                self.settings.tts_python,
+                path_for_cwd(script, self.settings.tts_root),
+            ],
+            cwd=self.settings.tts_root,
+        )
 
     def _download_musetalk(self) -> None:
         root = self.settings.musetalk_root
         script = root / "download_weights.bat"
         if script.exists():
-            self._run(["cmd", "/c", str(script)], cwd=root)
+            self._run(["cmd", "/c", path_for_cwd(script, root)], cwd=root)
             return
         script = root / "download_weights.sh"
         if script.exists():
-            self._run(["bash", str(script)], cwd=root)
+            self._run(["bash", path_for_cwd(script, root)], cwd=root)
             return
         raise RuntimeError("MuseTalk download script is missing")
 
@@ -137,7 +174,7 @@ class ModelManifest:
             self._run([sys.executable, "-m", "pip", "install", "huggingface_hub"])
             from huggingface_hub import hf_hub_download
 
-        for folder, repo_pattern, setting_name in WAN_FILES:
+        for folder, repo_pattern, setting_name in self._wan_files:
             filename = str(getattr(self.settings, setting_name))
             target = self.comfy_models_dir / folder / filename
             if target.exists():
@@ -147,6 +184,8 @@ class ModelManifest:
             shutil.copy2(source, target)
 
     def _run(self, cmd: list[str], cwd: Path | None = None) -> None:
+        if cwd:
+            cmd = [command_for_cwd(cmd[0], cwd), *cmd[1:]]
         result = subprocess.run(
             cmd,
             cwd=str(cwd) if cwd else None,

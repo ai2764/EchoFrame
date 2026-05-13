@@ -3,6 +3,7 @@ import asyncio
 import json
 
 from app.config import get_settings
+from app.services.service_manifest import service_manifest
 from app.services.service_manager import ServiceManager
 
 
@@ -24,9 +25,12 @@ async def _run(action: str, names: list[str]) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="EchoFrame service control")
-    parser.add_argument("action", choices=["start", "stop", "restart", "status"])
+    parser.add_argument("action", choices=["start", "stop", "restart", "status", "manifest"])
     parser.add_argument("services", nargs="*", default=["lm_studio", "cosyvoice", "comfyui"])
     args = parser.parse_args()
+    if args.action == "manifest":
+        print(json.dumps(service_manifest(get_settings()), ensure_ascii=False, indent=2))
+        return 0
     print(json.dumps(asyncio.run(_run(args.action, args.services)), ensure_ascii=False, indent=2))
     return 0
 

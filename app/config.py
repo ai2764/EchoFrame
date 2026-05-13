@@ -1,27 +1,31 @@
+import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    app_profile: Literal["repo", "portable"] = "repo"
     app_host: str = "0.0.0.0"
     app_port: int = 7860
     data_dir: Path = Path("data")
+    model_downloads_enabled: bool = False
     avatar_size: int = 512
     output_size: int = 320
     resolution_min: int = 120
     resolution_max: int = 512
 
     llm_base_url: str = "http://127.0.0.1:1234/v1"
-    llm_model: str = "openai/gpt-oss-20b"
+    llm_model: str = ""
     llm_api_key: str = ""
     llm_allow_fallback: bool = True
     llm_timeout_seconds: float = 120.0
     max_reply_chars: int = 90
-    llm_load_before_request: bool = True
-    llm_unload_after_request: bool = True
+    llm_load_before_request: bool = False
+    llm_unload_after_request: bool = False
     llm_context_length: int = 16384
     llm_flash_attention: bool = True
     llm_offload_kv_cache_to_gpu: bool = True
@@ -31,19 +35,31 @@ class Settings(BaseSettings):
     lms_gpu: str = "max"
 
     tts_url: str = "http://127.0.0.1:9880"
+    tts_backend: Literal["native", "http"] = "http"
     tts_secret: str = ""
-    tts_default_voice_id: str = "4988cee6"
+    tts_manage_http_service: bool = False
+    tts_default_voice_id: str = "d36d10b9"
+    tts_female_voice_id: str = "d36d10b9"
+    tts_male_voice_id: str = "c715d869"
     tts_use_llm_instruct: bool = False
     tts_fixed_instruct: str = ""
     tts_speed: float = 1.0
-    tts_timeout_seconds: float = 180.0
-    tts_trim_start_seconds: float = 0.8
+    tts_timeout_seconds: float = 420.0
+    tts_trim_start_seconds: float = 0.0
     tts_fade_in_seconds: float = 0.04
     tts_root: Path = Path("engines/cosyvoice")
+    tts_model_dir: Path | None = None
+    tts_presets_file: Path | None = Path("assets/voices/presets.json")
     tts_python: str = "python"
     tts_script: str = "tts_server.py"
     tts_port: int = 9880
     tts_start_timeout_seconds: int = 180
+    tts_cuda_visible_devices: str = "0"
+    tts_native_worker: bool = True
+    tts_preload_on_startup: bool = True
+    tts_native_unload_after_request: bool = False
+    tts_use_float16: bool = True
+    tts_text_frontend: bool = False
 
     comfy_url: str = "http://127.0.0.1:8000"
     comfy_root: Path = Path("engines/comfyui")
@@ -59,11 +75,23 @@ class Settings(BaseSettings):
     wan_height: int = 320
     wan_fps: int = 12
     wan_loop_seconds: float = 2.75
+    wan_profile: Literal["wan22_14b_i2v", "wan22_5b_ti2v"] = "wan22_14b_i2v"
     wan_high_model: str = "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors"
     wan_low_model: str = "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"
     wan_clip_model: str = "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
     wan_vae_model: str = "wan_2.1_vae.safetensors"
     wan_weight_dtype: str = "default"
+    wan_use_4step_lora: bool = True
+    wan_high_lora: str = "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"
+    wan_low_lora: str = "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
+    wan_lora_strength: float = 1.0
+    wan_5b_model: str = "wan2.2_ti2v_5B_fp16.safetensors"
+    wan_5b_vae_model: str = "wan2.2_vae.safetensors"
+    wan_5b_steps: int = 20
+    wan_5b_cfg: float = 5.0
+    wan_5b_shift: float = 8.0
+    wan_5b_sampler: str = "uni_pc"
+    wan_5b_scheduler: str = "simple"
 
     musetalk_root: Path = Path("engines/musetalk")
     musetalk_python: str = "python"
@@ -97,6 +125,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    s = Settings()
+    env_file = os.environ.get("ECHOFRAME_ENV_FILE")
+    s = Settings(_env_file=env_file) if env_file else Settings()
     s.abs_data_dir.mkdir(parents=True, exist_ok=True)
     return s

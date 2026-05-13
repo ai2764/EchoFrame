@@ -1,0 +1,28 @@
+{
+  "groups": [
+    {
+      "name": "lm_studio",
+      "required": true,
+      "target": "external-lm-studio-cache",
+      "source": "Active loaded LM Studio model; LLM_MODEL is optional"
+    },
+    {
+      "name": "cosyvoice",
+      "required": true,
+      "target": "models/cosyvoice/CosyVoice2-0.5B",
+      "source": "CosyVoice2-0.5B"
+    },
+    {
+      "name": "wan2.2",
+      "required": false,
+      "target": "models/comfyui",
+      "source": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged, defaulting to 14B I2V with 4-step LoRAs; 5B TI2V files are experimental only"
+    },
+    {
+      "name": "musetalk",
+      "required": true,
+      "target": "models/musetalk",
+      "source": "MuseTalk model files"
+    }
+  ]
+}

@@ -143,13 +143,34 @@ class ComfyClient:
         width: int | None = None,
         height: int | None = None,
     ) -> dict:
+        if self.settings.wan_profile == "wan22_5b_ti2v":
+            return self._wan_5b_ti2v_workflow(image_name, prompt, video_prefix, length, seed, width, height)
+        return self._wan_14b_i2v_workflow(image_name, prompt, video_prefix, length, seed, width, height)
+
+    def _wan_14b_i2v_workflow(
+        self,
+        image_name: str,
+        prompt: str,
+        video_prefix: str,
+        length: int,
+        seed: int,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> dict:
         neg = (
             "blurry, bad quality, deformed, ugly, static, motionless, still frame, "
             "worst quality, extra limbs, glitch, watermark, text"
         )
         width = width or self.settings.wan_width
         height = height or self.settings.wan_height
-        return {
+        use_4step_lora = self.settings.wan_use_4step_lora
+        high_model = ["18", 0] if use_4step_lora else ["1", 0]
+        low_model = ["19", 0] if use_4step_lora else ["2", 0]
+        steps = 4 if use_4step_lora else 6
+        split_step = 2 if use_4step_lora else 3
+        sampler_name = "euler" if use_4step_lora else "euler_ancestral"
+        shift = 5.0 if use_4step_lora else 8.0
+        workflow = {
             "prompt": {
                 "1": {
                     "class_type": "UNETLoader",
@@ -159,8 +180,8 @@ class ComfyClient:
                     "class_type": "UNETLoader",
                     "inputs": {"unet_name": self.settings.wan_low_model, "weight_dtype": self.settings.wan_weight_dtype},
                 },
-                "3": {"class_type": "ModelSamplingSD3", "inputs": {"model": ["1", 0], "shift": 8.0}},
-                "4": {"class_type": "ModelSamplingSD3", "inputs": {"model": ["2", 0], "shift": 8.0}},
+                "3": {"class_type": "ModelSamplingSD3", "inputs": {"model": high_model, "shift": shift}},
+                "4": {"class_type": "ModelSamplingSD3", "inputs": {"model": low_model, "shift": shift}},
                 "5": {"class_type": "CLIPLoader", "inputs": {"clip_name": self.settings.wan_clip_model, "type": "wan"}},
                 "6": {"class_type": "VAELoader", "inputs": {"vae_name": self.settings.wan_vae_model}},
                 "8": {"class_type": "LoadImage", "inputs": {"image": image_name}},
@@ -180,8 +201,10 @@ class ComfyClient:
                 "11": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["5", 0], "text": prompt}},
                 "12": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["5", 0], "text": neg}},
                 "13": {
-                    "class_type": "Wan22ImageToVideoLatent",
+                    "class_type": "WanImageToVideo",
                     "inputs": {
+                        "positive": ["11", 0],
+                        "negative": ["12", 0],
                         "vae": ["6", 0],
                         "start_image": ["9", 0],
                         "width": ["9", 1],
@@ -194,17 +217,17 @@ class ComfyClient:
                     "class_type": "KSamplerAdvanced",
                     "inputs": {
                         "model": ["3", 0],
-                        "positive": ["11", 0],
-                        "negative": ["12", 0],
-                        "latent_image": ["13", 0],
+                        "positive": ["13", 0],
+                        "negative": ["13", 1],
+                        "latent_image": ["13", 2],
                         "add_noise": "enable",
                         "noise_seed": seed,
-                        "steps": 6,
+                        "steps": steps,
                         "cfg": 1.0,
-                        "sampler_name": "euler_ancestral",
+                        "sampler_name": sampler_name,
                         "scheduler": "simple",
                         "start_at_step": 0,
-                        "end_at_step": 3,
+                        "end_at_step": split_step,
                         "return_with_leftover_noise": "enable",
                     },
                 },
@@ -217,12 +240,12 @@ class ComfyClient:
                         "latent_image": ["14", 0],
                         "add_noise": "disable",
                         "noise_seed": 0,
-                        "steps": 6,
+                        "steps": steps,
                         "cfg": 1.0,
-                        "sampler_name": "euler_ancestral",
+                        "sampler_name": sampler_name,
                         "scheduler": "simple",
-                        "start_at_step": 3,
-                        "end_at_step": 10000,
+                        "start_at_step": split_step,
+                        "end_at_step": steps,
                         "return_with_leftover_noise": "disable",
                     },
                 },
@@ -241,6 +264,103 @@ class ComfyClient:
                         "crf": 19,
                         "save_metadata": False,
                         "trim_to_audio": False,
+                    },
+                },
+            }
+        }
+        if use_4step_lora:
+            workflow["prompt"]["18"] = {
+                "class_type": "LoraLoaderModelOnly",
+                "inputs": {
+                    "model": ["1", 0],
+                    "lora_name": self.settings.wan_high_lora,
+                    "strength_model": self.settings.wan_lora_strength,
+                },
+            }
+            workflow["prompt"]["19"] = {
+                "class_type": "LoraLoaderModelOnly",
+                "inputs": {
+                    "model": ["2", 0],
+                    "lora_name": self.settings.wan_low_lora,
+                    "strength_model": self.settings.wan_lora_strength,
+                },
+            }
+        return workflow
+
+    def _wan_5b_ti2v_workflow(
+        self,
+        image_name: str,
+        prompt: str,
+        video_prefix: str,
+        length: int,
+        seed: int,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> dict:
+        neg = (
+            "oversaturated, overexposed, static, blurry details, subtitles, style, artwork, "
+            "painting, still image, gray overall, worst quality, low quality, jpeg artifacts, "
+            "ugly, broken, bad hands, bad face, deformed, disfigured, extra fingers, fused fingers, "
+            "motionless frame, cluttered background, watermark, text"
+        )
+        width = width or self.settings.wan_width
+        height = height or self.settings.wan_height
+        return {
+            "prompt": {
+                "1": {
+                    "class_type": "UNETLoader",
+                    "inputs": {
+                        "unet_name": self.settings.wan_5b_model,
+                        "weight_dtype": self.settings.wan_weight_dtype,
+                    },
+                },
+                "2": {
+                    "class_type": "ModelSamplingSD3",
+                    "inputs": {"model": ["1", 0], "shift": self.settings.wan_5b_shift},
+                },
+                "3": {
+                    "class_type": "CLIPLoader",
+                    "inputs": {"clip_name": self.settings.wan_clip_model, "type": "wan"},
+                },
+                "4": {"class_type": "VAELoader", "inputs": {"vae_name": self.settings.wan_5b_vae_model}},
+                "5": {"class_type": "LoadImage", "inputs": {"image": image_name}},
+                "6": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["3", 0], "text": prompt}},
+                "7": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["3", 0], "text": neg}},
+                "8": {
+                    "class_type": "Wan22ImageToVideoLatent",
+                    "inputs": {
+                        "vae": ["4", 0],
+                        "start_image": ["5", 0],
+                        "width": width,
+                        "height": height,
+                        "length": length,
+                        "batch_size": 1,
+                    },
+                },
+                "9": {
+                    "class_type": "KSampler",
+                    "inputs": {
+                        "model": ["2", 0],
+                        "positive": ["6", 0],
+                        "negative": ["7", 0],
+                        "latent_image": ["8", 0],
+                        "seed": seed,
+                        "steps": self.settings.wan_5b_steps,
+                        "cfg": self.settings.wan_5b_cfg,
+                        "sampler_name": self.settings.wan_5b_sampler,
+                        "scheduler": self.settings.wan_5b_scheduler,
+                        "denoise": 1.0,
+                    },
+                },
+                "10": {"class_type": "VAEDecode", "inputs": {"samples": ["9", 0], "vae": ["4", 0]}},
+                "11": {"class_type": "CreateVideo", "inputs": {"images": ["10", 0], "fps": self.settings.wan_fps}},
+                "12": {
+                    "class_type": "SaveVideo",
+                    "inputs": {
+                        "video": ["11", 0],
+                        "filename_prefix": video_prefix,
+                        "format": "mp4",
+                        "codec": "h264",
                     },
                 },
             }

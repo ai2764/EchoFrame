@@ -14,6 +14,7 @@ class ChatRequest(BaseModel):
     reply_override: str | None = Field(default=None, max_length=2000)
     mode: Literal["fast", "wan_loop", "wan"] = "fast"
     voice_id: str | None = None
+    voice: Literal["female", "male"] | None = None
     resolution: int | None = Field(default=None, ge=120, le=512)
 
 
@@ -35,6 +36,24 @@ class ChatResponse(BaseModel):
 class ServiceStatus(BaseModel):
     ok: bool
     detail: str = ""
+
+
+class GpuProcess(BaseModel):
+    label: str
+    pid: str
+    process_name: str = ""
+    used_memory: str = ""
+    used_memory_mib: int | None = None
+    memory_available: bool = True
+
+
+class GpuStatus(ServiceStatus):
+    name: str = "GPU"
+    utilization: int | None = None
+    memory_used: int | None = None
+    memory_total: int | None = None
+    temperature: int | None = None
+    processes: list[GpuProcess] = Field(default_factory=list)
 
 
 class EngineStatus(BaseModel):

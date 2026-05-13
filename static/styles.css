@@ -17,7 +17,7 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: linear-gradient(180deg, #f9faf7 0%, var(--bg) 42%, #eef3ef 100%);
   color: var(--ink);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -40,10 +40,14 @@ body {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
+  box-shadow: 0 14px 40px rgb(22 26 29 / 7%);
 }
 
 .side {
   padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .main {
@@ -57,7 +61,6 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 18px;
 }
 
 .mark {
@@ -104,7 +107,6 @@ dt {
 .servicePanel {
   border-bottom: 1px solid var(--line);
   padding-bottom: 14px;
-  margin-bottom: 14px;
 }
 
 .panelHeader {
@@ -131,12 +133,14 @@ dt {
 
 .serviceItem {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 8px;
   padding: 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfcfa;
+  border-left-width: 4px;
 }
 
 .serviceItem.ok {
@@ -148,9 +152,9 @@ dt {
 }
 
 .serviceMeta {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .serviceMeta strong {
@@ -160,20 +164,128 @@ dt {
 .serviceMeta span {
   color: var(--muted);
   font-size: 12px;
-  text-align: right;
   overflow-wrap: anywhere;
 }
 
 .serviceActions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .serviceActions button {
-  min-width: 0;
+  min-width: 72px;
   padding: 7px 6px;
   font-size: 12px;
+}
+
+.statusBadge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 42px;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.statusBadge.ok {
+  background: #e7f5ec;
+  color: var(--ok);
+}
+
+.statusBadge.bad {
+  background: #fff0f0;
+  color: var(--bad);
+}
+
+.gpuPanel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfa;
+  border-left: 4px solid var(--bad);
+}
+
+.gpuPanel.ok {
+  border-left-color: var(--ok);
+}
+
+.gpuName {
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.meterBlock {
+  display: grid;
+  gap: 6px;
+}
+
+.meterLabel,
+.gpuMeta,
+.gpuProcess {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.meterLabel span,
+.gpuMeta,
+.gpuProcess span,
+.gpuProcess em {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.meterLabel strong {
+  font-size: 12px;
+}
+
+.meter {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf0eb;
+}
+
+.meter span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width 180ms ease;
+}
+
+.gpuProcesses {
+  display: grid;
+  gap: 6px;
+}
+
+.gpuProcess {
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+}
+
+.gpuProcess strong {
+  font-size: 12px;
+}
+
+.gpuProcess em {
+  font-style: normal;
+}
+
+.gpuProcess.empty {
+  color: var(--muted);
+  justify-content: center;
 }
 
 .healthItem {
@@ -195,33 +307,6 @@ dt {
 
 .healthItem .bad {
   color: var(--bad);
-}
-
-.cameraTools {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.cameraTools button {
-  min-width: 0;
-}
-
-.cameraBox {
-  margin-top: 12px;
-  aspect-ratio: 1 / 1;
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  background: #121518;
-}
-
-.cameraBox video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transform: scaleX(-1);
 }
 
 .stagePanel {
@@ -324,6 +409,18 @@ dt {
   color: var(--bad);
 }
 
+.runError {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--bad), white 45%);
+  border-radius: 8px;
+  background: #fff5f5;
+  color: var(--bad);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .field {
   display: grid;
   gap: 7px;
@@ -341,6 +438,7 @@ button {
 
 input[type="text"],
 input[type="number"],
+select,
 textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -353,6 +451,14 @@ textarea {
 textarea {
   resize: vertical;
   min-height: 104px;
+}
+
+select {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 12px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
 }
 
 button {
@@ -384,7 +490,7 @@ button.danger {
 
 button:disabled {
   opacity: 0.6;
-  cursor: wait;
+  cursor: not-allowed;
 }
 
 .actions {
@@ -398,6 +504,12 @@ button:disabled {
   justify-content: space-between;
   align-items: end;
   gap: 12px;
+}
+
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .settingsRow {
@@ -427,13 +539,31 @@ button:disabled {
   overflow: hidden;
 }
 
-.mode {
+.langGroup {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 1fr);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mode,
+.lang {
   border: 0;
   border-radius: 0;
+}
+
+.mode {
   min-width: 88px;
 }
 
-.mode.active {
+.lang {
+  min-width: 54px;
+  padding-inline: 10px;
+}
+
+.mode.active,
+.lang.active {
   background: var(--accent2);
   color: #fff;
 }
@@ -494,8 +624,7 @@ dd {
   font-size: 12px;
 }
 
-video,
-audio {
+video {
   width: 100%;
 }
 
@@ -503,10 +632,6 @@ video {
   aspect-ratio: 1 / 1;
   background: #121518;
   border-radius: 8px;
-}
-
-audio {
-  margin-top: 10px;
 }
 
 @media (max-width: 860px) {
@@ -526,6 +651,18 @@ audio {
     align-items: stretch;
     grid-template-columns: 1fr;
     flex-direction: column;
+  }
+
+  .toolbarActions {
+    width: 100%;
+  }
+
+  .toolbarActions > button {
+    flex: 1;
+  }
+
+  .langGroup {
+    flex: 0 0 auto;
   }
 
   button.primary {

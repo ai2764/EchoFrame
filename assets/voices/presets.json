@@ -1,0 +1,42 @@
+{
+  "4988cee6": {
+    "id": "4988cee6",
+    "label": "Standard Female",
+    "label_en": "Nora - standard female",
+    "ref_audio": "female_standard.wav",
+    "ref_text": "大家好，这是一段参考音频，用来展示我的声线。希望你听得舒服。",
+    "instruct": "亲切自然的成年女声",
+    "instruct_en": "Warm natural adult female",
+    "gender": "female"
+  },
+  "d36d10b9": {
+    "id": "d36d10b9",
+    "label": "Mira - English female",
+    "label_en": "Mira - bright English female",
+    "ref_audio": "mira_english_steady.wav",
+    "ref_text": "We will proceed with the original plan, one step at a time, calmly.",
+    "instruct": "自然清晰的英文女声",
+    "instruct_en": "Natural clear English female",
+    "gender": "female"
+  },
+  "21897fae": {
+    "id": "21897fae",
+    "label": "News Male",
+    "label_en": "Ethan - news male",
+    "ref_audio": "male_news.wav",
+    "ref_text": "大家好，这是一段参考音频，用来展示我的声线。希望你听得舒服。",
+    "instruct": "标准规范的新闻播报男声",
+    "instruct_en": "Standard news anchor male",
+    "gender": "male"
+  },
+  "c715d869": {
+    "id": "c715d869",
+    "label": "Owen - English male",
+    "label_en": "Owen - composed English male",
+    "ref_audio": "owen_english_steady.wav",
+    "ref_text": "We will proceed with the original plan, one step at a time, calmly.",
+    "instruct": "沉稳清晰的英文男声",
+    "instruct_en": "Composed clear English male",
+    "gender": "male"
+  }
+}

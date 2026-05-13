@@ -4,30 +4,28 @@ let currentController = null;
 let serverRunActive = false;
 let lastStatusRunId = "";
 let lastRenderedResultRunId = "";
-let cameraStream = null;
-let healthPollInFlight = false;
 let servicesPollInFlight = false;
 let gpuPollInFlight = false;
 let runStatusPollInFlight = false;
-const HEALTH_POLL_MS = 15000;
 const SERVICES_POLL_MS = 5000;
 const GPU_POLL_MS = 2000;
 const RUN_STATUS_POLL_MS = 2000;
 const RESOLUTION_MIN = 120;
 const RESOLUTION_MAX = 512;
 const RESOLUTION_DEFAULT = 320;
+const UI_LANG_KEY = "echoframe.uiLang";
 const STAGES = [
-  ["llm", "LLM"],
-  ["tts", "TTS"],
-  ["audio_probe", "Audio Probe"],
-  ["base_video", "Base Video"],
-  ["musetalk", "MuseTalk"],
-  ["total", "Total"],
+  ["llm", "stageLlm"],
+  ["tts", "stageTts"],
+  ["audio_probe", "stageAudioProbe"],
+  ["base_video", "stageBaseVideo"],
+  ["musetalk", "stageMuseTalk"],
+  ["total", "stageTotal"],
 ];
 const MODE_LABELS = {
-  fast: "Running MuseTalk",
-  wan_loop: "Running Wan Loop + MuseTalk",
-  wan: "Running Wan Full + MuseTalk",
+  fast: "runningMuseTalk",
+  wan_loop: "runningWanLoop",
+  wan: "runningWan",
 };
 const SERVICE_LABELS = {
   lm_studio: "LM Studio",
@@ -38,40 +36,239 @@ const SERVICE_LABELS = {
   gpu: "GPU",
 };
 
+const TRANSLATIONS = {
+  zh: {
+    idle: "空闲",
+    services: "服务",
+    refresh: "刷新",
+    gpu: "GPU",
+    gpuWaiting: "等待 GPU 状态",
+    gpuUnavailable: "GPU 不可用",
+    utilization: "占用率",
+    avatar: "头像",
+    mode: "模式",
+    language: "语言",
+    modeFast: "快速",
+    modeWanLoop: "Wan 循环",
+    modeWanFull: "Wan 完整",
+    resolution: "分辨率",
+    size: "尺寸",
+    message: "聊天模式",
+    messagePlaceholder: "输入问题，让 LLM 生成口播文本...",
+    spokenText: "口播文本",
+    spokenTextPlaceholder: "输入要直接生成的口播文本...",
+    voice: "声音",
+    voiceFemale: "女声",
+    voiceMale: "男声",
+    generate: "生成",
+    stop: "停止",
+    runStatus: "运行状态",
+    reply: "回复",
+    ttsSent: "TTS 发送",
+    audio: "音频",
+    timings: "耗时",
+    video: "视频",
+    ok: "正常",
+    online: "在线",
+    off: "离线",
+    notInstalled: "未安装",
+    modelsMissing: "模型缺失",
+    modelLoaded: "模型已加载",
+    modelUnloaded: "模型未加载",
+    start: "启动",
+    restart: "重启",
+    actionStart: "启动 {name}",
+    actionRestart: "重启 {name}",
+    actionFailed: "{action}失败",
+    noActiveAiProcess: "没有活动 AI 进程",
+    aiProcessCount: "{count} 个 AI 进程",
+    uploadAvatarFirst: "请先上传头像",
+    enterMessageOrSpokenText: "请输入消息或口播文本",
+    uploading: "上传中",
+    avatarReady: "头像已就绪",
+    uploadFailed: "上传失败",
+    generationFailed: "生成失败",
+    failed: "失败",
+    stopped: "已停止",
+    stopping: "停止中",
+    done: "完成",
+    doneRun: "完成 {id}",
+    running: "运行中",
+    runningRun: "运行中 {id}",
+    runningMuseTalk: "正在运行 MuseTalk",
+    runningWanLoop: "正在运行 Wan Loop + MuseTalk",
+    runningWan: "正在运行 Wan Full + MuseTalk",
+    cancelledState: "已取消",
+    stageLlm: "LLM",
+    stageTts: "TTS",
+    stageAudioProbe: "音频检查",
+    stageBaseVideo: "底片",
+    stageMuseTalk: "MuseTalk",
+    stageTotal: "总计",
+    notRun: "未运行",
+    stageRunning: "运行中",
+    stageDone: "{duration}s",
+    stageCancelled: "已取消",
+    stageFailed: "失败",
+    ttsPresetVoice: "(空；使用稳定预设声音)",
+  },
+  en: {
+    idle: "Idle",
+    services: "Services",
+    refresh: "Refresh",
+    gpu: "GPU",
+    gpuWaiting: "Waiting for GPU status",
+    gpuUnavailable: "GPU unavailable",
+    utilization: "Utilization",
+    avatar: "Avatar",
+    mode: "Mode",
+    language: "Language",
+    modeFast: "Fast",
+    modeWanLoop: "Wan Loop",
+    modeWanFull: "Wan Full",
+    resolution: "Resolution",
+    size: "Size",
+    message: "Chat Mode",
+    messagePlaceholder: "Ask a question and let the LLM write the spoken text...",
+    spokenText: "Spoken Text",
+    spokenTextPlaceholder: "Enter the exact spoken text...",
+    voice: "Voice",
+    voiceFemale: "Female",
+    voiceMale: "Male",
+    generate: "Generate",
+    stop: "Stop",
+    runStatus: "Run Status",
+    reply: "Reply",
+    ttsSent: "TTS Sent",
+    audio: "Audio",
+    timings: "Timings",
+    video: "Video",
+    ok: "OK",
+    online: "ONLINE",
+    off: "OFF",
+    notInstalled: "not installed",
+    modelsMissing: "models missing",
+    modelLoaded: "model loaded",
+    modelUnloaded: "model unloaded",
+    start: "Start",
+    restart: "Restart",
+    actionStart: "Start {name}",
+    actionRestart: "Restart {name}",
+    actionFailed: "{action} failed",
+    noActiveAiProcess: "No active AI compute process",
+    aiProcessCount: "{count} AI {plural}",
+    uploadAvatarFirst: "Upload an avatar first",
+    enterMessageOrSpokenText: "Enter a message or spoken text",
+    uploading: "Uploading",
+    avatarReady: "Avatar ready",
+    uploadFailed: "Upload failed",
+    generationFailed: "Generation failed",
+    failed: "Failed",
+    stopped: "Stopped",
+    stopping: "Stopping",
+    done: "Done",
+    doneRun: "Done {id}",
+    running: "Running",
+    runningRun: "Running {id}",
+    runningMuseTalk: "Running MuseTalk",
+    runningWanLoop: "Running Wan Loop + MuseTalk",
+    runningWan: "Running Wan Full + MuseTalk",
+    cancelledState: "Cancelled",
+    stageLlm: "LLM",
+    stageTts: "TTS",
+    stageAudioProbe: "Audio Probe",
+    stageBaseVideo: "Base Video",
+    stageMuseTalk: "MuseTalk",
+    stageTotal: "Total",
+    notRun: "not run",
+    stageRunning: "running",
+    stageDone: "{duration}s",
+    stageCancelled: "cancelled",
+    stageFailed: "failed",
+    ttsPresetVoice: "(empty; stable preset voice)",
+  },
+};
+
+let uiLang = chooseInitialLanguage();
+let runStateKey = "idle";
+let runStateParams = {};
+
 const $ = (id) => document.getElementById(id);
 
+function chooseInitialLanguage() {
+  const saved = localStorage.getItem(UI_LANG_KEY);
+  if (saved === "zh" || saved === "en") return saved;
+  return navigator.language?.toLowerCase().startsWith("zh") ? "zh" : "en";
+}
+
+function tr(key, params = {}) {
+  const source = TRANSLATIONS[uiLang] || TRANSLATIONS.en;
+  const fallback = TRANSLATIONS.en[key] || key;
+  const text = source[key] || fallback;
+  return text.replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ""));
+}
+
+function applyTranslations() {
+  document.documentElement.lang = uiLang === "zh" ? "zh-CN" : "en";
+  document.querySelectorAll("[data-i18n]").forEach((node) => {
+    node.textContent = tr(node.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => {
+    node.setAttribute("placeholder", tr(node.dataset.i18nPlaceholder));
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach((node) => {
+    node.setAttribute("aria-label", tr(node.dataset.i18nAria));
+  });
+  document.querySelectorAll(".lang").forEach((button) => {
+    button.classList.toggle("active", button.dataset.lang === uiLang);
+  });
+  updateRunStateText();
+  updateStageTexts();
+}
+
+function setLanguage(lang) {
+  uiLang = lang === "zh" ? "zh" : "en";
+  localStorage.setItem(UI_LANG_KEY, uiLang);
+  applyTranslations();
+  lastStatusRunId = "";
+  lastRenderedResultRunId = "";
+  refreshAll();
+}
+
+function setStateKey(key, params = {}) {
+  runStateKey = key;
+  runStateParams = params;
+  updateRunStateText();
+}
+
 function setState(text) {
+  runStateKey = "";
+  runStateParams = {};
   $("runState").textContent = text;
 }
 
-function statusClass(ok) {
-  return ok ? "ok" : "bad";
+function updateRunStateText() {
+  if (!runStateKey) return;
+  $("runState").textContent = tr(runStateKey, runStateParams);
 }
 
-function renderHealthRow(name, value) {
-  const health = $("health");
-  let row = $(`health-${name}`);
-  if (!row) {
-    row = document.createElement("div");
-    row.className = "healthItem";
-    row.id = `health-${name}`;
-    row.innerHTML = "<strong></strong><span></span>";
-    health.appendChild(row);
-  }
-  const status = row.querySelector("span");
-  row.querySelector("strong").textContent = name;
-  status.className = statusClass(value.ok);
-  status.textContent = `${value.ok ? "OK" : "OFF"} ${value.detail || ""}`;
+function setRunError(text = "") {
+  const box = $("runError");
+  if (!box) return;
+  box.textContent = text;
+  box.hidden = !text;
 }
 
 function initStageStatus() {
   const box = $("stageStatus");
   box.innerHTML = "";
-  for (const [key, label] of STAGES) {
+  for (const [key, labelKey] of STAGES) {
     const chip = document.createElement("div");
     chip.className = "stageChip idle";
     chip.id = `stage-${key}`;
-    chip.innerHTML = `<span class="dot"></span><strong>${label}</strong><em>not run</em>`;
+    chip.dataset.status = "idle";
+    chip.dataset.duration = "";
+    chip.innerHTML = `<span class="dot"></span><strong>${tr(labelKey)}</strong><em>${tr("notRun")}</em>`;
     box.appendChild(chip);
   }
 }
@@ -81,22 +278,34 @@ function setStage(key, status, duration = null) {
   if (!chip) return;
   chip.classList.remove("idle", "running", "done", "failed", "cancelled");
   chip.classList.add(status);
-  const text = status === "running"
-    ? "running"
-    : status === "done"
-      ? `${duration ?? 0}s`
-      : status === "cancelled"
-        ? "cancelled"
-      : status === "failed"
-        ? "failed"
-        : "not run";
-  chip.querySelector("em").textContent = text;
+  chip.dataset.status = status;
+  chip.dataset.duration = duration == null ? "" : String(duration);
+  chip.querySelector("em").textContent = stageStatusText(status, duration);
+}
+
+function updateStageTexts() {
+  for (const [key, labelKey] of STAGES) {
+    const chip = $(`stage-${key}`);
+    if (!chip) continue;
+    chip.querySelector("strong").textContent = tr(labelKey);
+    const duration = chip.dataset.duration ? Number(chip.dataset.duration) : null;
+    chip.querySelector("em").textContent = stageStatusText(chip.dataset.status || "idle", duration);
+  }
+}
+
+function stageStatusText(status, duration = null) {
+  if (status === "running") return tr("stageRunning");
+  if (status === "done") return tr("stageDone", { duration: duration ?? 0 });
+  if (status === "cancelled") return tr("stageCancelled");
+  if (status === "failed") return tr("stageFailed");
+  return tr("notRun");
 }
 
 function resetRunStatus() {
   for (const [key] of STAGES) {
     setStage(key, "idle");
   }
+  setRunError("");
   $("timings").innerHTML = "";
 }
 
@@ -113,7 +322,7 @@ function setServerRunActive(active) {
 }
 
 async function refreshAll() {
-  await Promise.allSettled([refreshServices(), refreshHealth(), refreshGpu(), refreshRunStatus()]);
+  await Promise.allSettled([refreshServices(), refreshGpu(), refreshRunStatus()]);
 }
 
 function renderServiceRow(name, value) {
@@ -129,9 +338,7 @@ function renderServiceRow(name, value) {
         <span></span>
       </div>
       <div class="serviceActions">
-        <button type="button" data-action="start">Start</button>
-        <button type="button" data-action="restart">Restart</button>
-        <button type="button" data-action="stop">Stop</button>
+        <button type="button"></button>
       </div>
     `;
     services.appendChild(row);
@@ -145,17 +352,42 @@ function renderServiceRow(name, value) {
   row.classList.toggle("bad", !ok);
   row.querySelector("strong").textContent = SERVICE_LABELS[name] || name;
   const parts = [
-    ok ? "OK" : online ? "ONLINE" : "OFF",
-    installed ? "" : "not installed",
-    modelsOk === false ? "models missing" : "",
+    ok ? tr("ok") : online ? tr("online") : tr("off"),
+    serviceDetailText(name, value),
+    installed ? "" : tr("notInstalled"),
+    modelsOk === false ? tr("modelsMissing") : "",
     value.port ? `:${value.port}` : "",
   ].filter(Boolean);
   status.textContent = parts.join(" ");
   status.title = value.detail || "";
-  for (const button of row.querySelectorAll("button")) {
-    button.dataset.name = name;
-    button.disabled = !value.startable;
-  }
+  const action = servicePrimaryAction(name, value);
+  const actions = row.querySelector(".serviceActions");
+  actions.innerHTML = "";
+  if (!action) return;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.name = name;
+  button.dataset.action = action;
+  button.textContent = tr(action === "start" ? "start" : "restart");
+  button.disabled = !value.startable;
+  actions.appendChild(button);
+}
+
+function serviceDetailText(name, value) {
+  const detail = String(value.detail || "");
+  if (name !== "lm_studio") return "";
+  const loaded = detail.match(/loaded:\s*(.+)$/i);
+  if (loaded) return `${tr("modelLoaded")}: ${loaded[1]}`;
+  if (detail.toLowerCase().includes("no loaded llm")) return tr("modelUnloaded");
+  return "";
+}
+
+function servicePrimaryAction(name, value) {
+  if (!value.startable) return "";
+  if (value.ok) return "";
+  if (value.installed === false || value.models_ok === false) return "";
+  if (value.online) return name === "comfyui" ? "restart" : "";
+  return "start";
 }
 
 async function refreshServices() {
@@ -165,42 +397,28 @@ async function refreshServices() {
     const res = await fetch("/api/services", { cache: "no-store" });
     const data = await res.json();
     for (const [name, value] of Object.entries(data)) {
+      if (name === "gpu") continue;
       renderServiceRow(name, value);
     }
   } catch (err) {
     const services = $("services");
-    services.innerHTML = `<div class="serviceItem bad"><div class="serviceMeta"><strong>Services</strong><span>${err.message}</span></div></div>`;
+    services.innerHTML = `<div class="serviceItem bad"><div class="serviceMeta"><strong>${tr("services")}</strong><span>${escapeHtml(err.message)}</span></div></div>`;
   } finally {
     servicesPollInFlight = false;
   }
 }
 
 async function serviceAction(name, action) {
-  setState(`${action} ${SERVICE_LABELS[name] || name}`);
+  const serviceName = SERVICE_LABELS[name] || name;
+  const actionKey = action === "start" ? "start" : "restart";
+  setStateKey(action === "start" ? "actionStart" : "actionRestart", { name: serviceName });
   const res = await fetch(`/api/services/${encodeURIComponent(name)}/${action}`, { method: "POST" });
   const data = await res.json();
   if (!res.ok || !data.ok) {
-    throw new Error(data.detail || `${action} failed`);
+    throw new Error(data.detail || tr("actionFailed", { action: tr(actionKey) }));
   }
   if (data.status) renderServiceRow(name, data.status);
   await refreshServices();
-}
-
-async function refreshHealth() {
-  if (healthPollInFlight) return;
-  healthPollInFlight = true;
-  try {
-    const res = await fetch("/api/health");
-    const data = await res.json();
-    for (const [name, value] of Object.entries(data)) {
-      renderHealthRow(name, value);
-    }
-  } catch (err) {
-    const health = $("health");
-    health.innerHTML = `<div class="healthItem"><strong>app</strong><span class="bad">${err.message}</span></div>`;
-  } finally {
-    healthPollInFlight = false;
-  }
 }
 
 async function refreshGpu() {
@@ -209,12 +427,71 @@ async function refreshGpu() {
   try {
     const res = await fetch("/api/gpu", { cache: "no-store" });
     const data = await res.json();
-    renderHealthRow("gpu", data);
+    renderGpu(data);
   } catch (err) {
-    renderHealthRow("gpu", { ok: false, detail: err.message });
+    renderGpu({ ok: false, detail: err.message, processes: [] });
   } finally {
     gpuPollInFlight = false;
   }
+}
+
+function renderGpu(data) {
+  const ok = Boolean(data.ok);
+  const badge = $("gpuBadge");
+  badge.className = `statusBadge ${ok ? "ok" : "bad"}`;
+  badge.textContent = ok ? tr("ok") : tr("off");
+  $("gpuPanel").classList.toggle("ok", ok);
+  $("gpuPanel").classList.toggle("bad", !ok);
+  $("gpuName").textContent = data.name || data.detail || tr("gpuUnavailable");
+
+  const util = numberOrZero(data.utilization);
+  const memUsed = numberOrZero(data.memory_used);
+  const memTotal = numberOrZero(data.memory_total);
+  const memPct = memTotal > 0 ? Math.min(100, Math.round((memUsed / memTotal) * 100)) : 0;
+  $("gpuUtilText").textContent = data.utilization == null ? "--%" : `${util}%`;
+  $("gpuUtilBar").style.width = `${Math.min(100, util)}%`;
+  $("gpuMemText").textContent = memTotal ? `${memUsed} / ${memTotal} MiB` : "-- / --";
+  $("gpuMemBar").style.width = `${memPct}%`;
+  $("gpuTemp").textContent = data.temperature == null ? "-- C" : `${data.temperature} C`;
+
+  const processes = Array.isArray(data.processes) ? data.processes : [];
+  $("gpuProcessCount").textContent = aiProcessCountText(processes.length);
+  const box = $("gpuProcesses");
+  if (!processes.length) {
+    box.innerHTML = `<div class="gpuProcess empty">${tr("noActiveAiProcess")}</div>`;
+    return;
+  }
+  box.innerHTML = processes.map((item) => `
+    <div class="gpuProcess">
+      <strong>${escapeHtml(item.label || "Process")}</strong>
+      <span>PID ${escapeHtml(item.pid || "?")}</span>
+      ${gpuProcessMemoryHtml(item)}
+    </div>
+  `).join("");
+}
+
+function gpuProcessMemoryHtml(item) {
+  if (item.memory_available && item.used_memory) {
+    return `<em>${escapeHtml(item.used_memory)}</em>`;
+  }
+  return "";
+}
+
+function aiProcessCountText(count) {
+  return tr("aiProcessCount", { count, plural: count === 1 ? "process" : "processes" });
+}
+
+function numberOrZero(value) {
+  return Number.isFinite(Number(value)) ? Number(value) : 0;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 async function refreshRunStatus() {
@@ -243,7 +520,8 @@ function applyRunStatus(data) {
     setStage(stage, item.status || "idle", item.duration);
   }
   if (data.status === "running") {
-    setState(runId ? `Running ${runId}` : "Running");
+    setRunError("");
+    setStateKey(runId ? "runningRun" : "running", { id: runId });
     if (runId) lastStatusRunId = runId;
     return;
   }
@@ -251,96 +529,45 @@ function applyRunStatus(data) {
   if (runId) lastStatusRunId = runId;
   if (data.result) renderResult(data.result);
   if (data.status === "done") {
-    setState(runId ? `Done ${runId}` : "Done");
+    setRunError("");
+    setStateKey(runId ? "doneRun" : "done", { id: runId });
   } else if (data.status === "cancelled") {
+    setRunError("");
     markRunningCancelled();
-    setState("Stopped");
+    setStateKey("stopped");
   } else if (data.status === "failed") {
     markRunningFailed();
-    setState(data.error || "Failed");
+    setRunError(data.error || tr("failed"));
+    setStateKey("failed");
   }
 }
 
 async function uploadAvatar(file) {
   const form = new FormData();
   form.append("image", file);
-  setState("Uploading");
+  setStateKey("uploading");
   const res = await fetch("/api/avatar", { method: "POST", body: form });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || "Upload failed");
+  if (!res.ok) throw new Error(data.detail || tr("uploadFailed"));
   avatarId = data.avatar_id;
   const preview = $("avatarPreview");
   preview.src = data.image_url;
   preview.style.display = "block";
-  setState("Avatar ready");
-}
-
-async function openCamera() {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error("Camera is not available in this browser");
-  }
-  stopCamera();
-  cameraStream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: "user",
-      width: { ideal: 1280 },
-      height: { ideal: 1280 },
-    },
-    audio: false,
-  });
-  $("cameraVideo").srcObject = cameraStream;
-  $("cameraBox").hidden = false;
-  $("cameraShot").hidden = false;
-  $("cameraClose").hidden = false;
-  $("cameraOpen").hidden = true;
-  setState("Camera ready");
-}
-
-function stopCamera() {
-  if (cameraStream) {
-    for (const track of cameraStream.getTracks()) track.stop();
-  }
-  cameraStream = null;
-  if ($("cameraVideo")) $("cameraVideo").srcObject = null;
-  if ($("cameraBox")) $("cameraBox").hidden = true;
-  if ($("cameraShot")) $("cameraShot").hidden = true;
-  if ($("cameraClose")) $("cameraClose").hidden = true;
-  if ($("cameraOpen")) $("cameraOpen").hidden = false;
-}
-
-async function captureCameraPhoto() {
-  const video = $("cameraVideo");
-  if (!cameraStream || !video.videoWidth || !video.videoHeight) {
-    throw new Error("Camera is not ready");
-  }
-  const size = RESOLUTION_MAX;
-  const side = Math.min(video.videoWidth, video.videoHeight);
-  const sx = Math.floor((video.videoWidth - side) / 2);
-  const sy = Math.floor((video.videoHeight - side) / 2);
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(video, sx, sy, side, side, 0, 0, size, size);
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-  if (!blob) throw new Error("Could not capture photo");
-  const file = new File([blob], `camera-${Date.now()}.png`, { type: "image/png" });
-  await uploadAvatar(file);
-  stopCamera();
+  setStateKey("avatarReady");
 }
 
 async function generate() {
-  if (!avatarId) throw new Error("Upload an avatar first");
+  if (!avatarId) throw new Error(tr("uploadAvatarFirst"));
   const message = $("message").value.trim();
   const replyOverride = $("replyOverride").value.trim();
-  if (!message && !replyOverride) throw new Error("Enter a message or manual reply");
+  if (!message && !replyOverride) throw new Error(tr("enterMessageOrSpokenText"));
   const controller = new AbortController();
   currentController = controller;
   setRunning(true);
   lastStatusRunId = "";
   lastRenderedResultRunId = "";
   resetRunStatus();
-  setState(MODE_LABELS[mode] || "Running");
+  setStateKey(MODE_LABELS[mode] || "running");
   try {
     const res = await fetch("/api/chat-stream", {
       method: "POST",
@@ -351,16 +578,16 @@ async function generate() {
         message,
         reply_override: replyOverride || null,
         mode,
-        voice_id: $("voiceId").value.trim() || null,
+        voice: $("voiceChoice").value,
         resolution: getResolution(),
       }),
     });
-    if (!res.ok || !res.body) throw new Error("Generation failed");
+    if (!res.ok || !res.body) throw new Error(tr("generationFailed"));
     await readEventStream(res.body);
-    setState("Done");
+    setStateKey("done");
   } catch (err) {
     if (err.name === "AbortError") {
-      setState("Stopped");
+      setStateKey("stopped");
       return;
     }
     throw err;
@@ -399,10 +626,12 @@ function handleEvent(event) {
   }
   if (event.type === "error") {
     markRunningFailed();
-    throw new Error(event.message || "Generation failed");
+    setRunError(event.message || tr("generationFailed"));
+    throw new Error(event.message || tr("generationFailed"));
   }
   if (event.type === "cancelled") {
     markRunningCancelled();
+    setRunError("");
     throw new DOMException(event.message || "Workflow cancelled", "AbortError");
   }
 }
@@ -423,7 +652,7 @@ function markRunningCancelled() {
 
 async function stopWorkflow() {
   if (!currentController && !serverRunActive) return;
-  setState("Stopping");
+  setStateKey("stopping");
   $("stop").disabled = true;
   try {
     await fetch("/api/stop", { method: "POST" });
@@ -433,7 +662,7 @@ async function stopWorkflow() {
   if (currentController) currentController.abort();
   setServerRunActive(false);
   markRunningCancelled();
-  setState("Stopped");
+  setStateKey("stopped");
 }
 
 function renderResult(data) {
@@ -441,16 +670,27 @@ function renderResult(data) {
   if (runId && runId === lastRenderedResultRunId) return;
   $("reply").textContent = data.reply;
   $("instruct").textContent = data.cosyvoice_instruct;
-  $("ttsSent").textContent = data.tts_instruct_sent || "(empty; stable preset voice)";
+  $("ttsSent").textContent = data.tts_instruct_sent || tr("ttsPresetVoice");
   $("wanPrompt").textContent = data.wan_prompt;
   $("duration").textContent = `${data.audio_duration}s`;
   $("resultResolution").textContent = data.resolution ? `${data.resolution}x${data.resolution}` : "";
   $("timings").innerHTML = Object.entries(data.timings || {})
-    .map(([key, value]) => `<span class="timing">${key}: ${value}s</span>`)
+    .map(([key, value]) => `<span class="timing">${escapeHtml(timingLabel(key))}: ${value}s</span>`)
     .join("");
   setMediaSrc($("video"), data.video_url);
-  setMediaSrc($("audio"), data.audio_url);
   if (runId) lastRenderedResultRunId = runId;
+}
+
+function timingLabel(key) {
+  const labels = {
+    llm: "stageLlm",
+    tts: "stageTts",
+    audio_probe: "stageAudioProbe",
+    base_video: "stageBaseVideo",
+    musetalk: "stageMuseTalk",
+    total: "stageTotal",
+  };
+  return labels[key] ? tr(labels[key]) : key;
 }
 
 function setMediaSrc(element, url) {
@@ -486,6 +726,10 @@ document.querySelectorAll(".mode").forEach((button) => {
   });
 });
 
+document.querySelectorAll(".lang").forEach((button) => {
+  button.addEventListener("click", () => setLanguage(button.dataset.lang));
+});
+
 $("resolutionRange").addEventListener("input", (event) => setResolution(event.target.value));
 $("resolutionNumber").addEventListener("change", (event) => setResolution(event.target.value));
 $("resolutionNumber").addEventListener("input", (event) => {
@@ -502,37 +746,17 @@ $("avatarInput").addEventListener("change", async (event) => {
   }
 });
 
-$("cameraOpen").addEventListener("click", async () => {
-  try {
-    await openCamera();
-  } catch (err) {
-    setState(err.message);
-  }
-});
-
-$("cameraShot").addEventListener("click", async () => {
-  try {
-    await captureCameraPhoto();
-  } catch (err) {
-    setState(err.message);
-  }
-});
-
-$("cameraClose").addEventListener("click", () => {
-  stopCamera();
-  setState("Camera closed");
-});
-
 $("send").addEventListener("click", async () => {
   try {
     await generate();
   } catch (err) {
-    setState(err.message);
+    setRunError(err.message);
+    setStateKey("failed");
   }
 });
 
 $("stop").addEventListener("click", stopWorkflow);
-$("refreshHealth").addEventListener("click", refreshAll);
+$("refreshAllStatus").addEventListener("click", refreshAll);
 $("refreshServices").addEventListener("click", refreshServices);
 $("services").addEventListener("click", async (event) => {
   const button = event.target.closest("button");
@@ -544,10 +768,10 @@ $("services").addEventListener("click", async (event) => {
   }
 });
 initStageStatus();
+applyTranslations();
 setResolution(RESOLUTION_DEFAULT);
 refreshAll();
 refreshGpu();
 setInterval(refreshGpu, GPU_POLL_MS);
 setInterval(refreshServices, SERVICES_POLL_MS);
-setInterval(refreshHealth, HEALTH_POLL_MS);
 setInterval(refreshRunStatus, RUN_STATUS_POLL_MS);

@@ -18,8 +18,12 @@ def main() -> int:
 
     manifest = ModelManifest(get_settings())
     if args.download:
-        completed = manifest.download_missing()
-        print(json.dumps({"downloaded": completed}, ensure_ascii=False, indent=2))
+        try:
+            completed = manifest.download_missing()
+            print(json.dumps({"downloaded": completed}, ensure_ascii=False, indent=2))
+        except RuntimeError as exc:
+            print(json.dumps({"downloaded": [], "ok": False, "detail": str(exc)}, ensure_ascii=False, indent=2))
+            return 2
     else:
         checks = {name: check.__dict__ for name, check in manifest.check_all().items()}
         print(json.dumps({"models": checks}, ensure_ascii=False, indent=2))
@@ -33,4 +37,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -1,40 +1,77 @@
 # EchoFrame
 
-EchoFrame is a local conversational digital human stack:
+EchoFrame is a local conversational digital-human orchestrator:
 
 ```text
 avatar image -> LLM reply plan -> TTS audio -> base video -> lip sync -> MP4
 ```
 
-The app is organized into four generation modules:
+The repository is intentionally lightweight. It contains the EchoFrame UI/API, workflow code, service health checks, and small voice reference presets. It does not install or vendor heavy AI runtimes for pull-repo users.
 
-- `llm`: reply text, CosyVoice delivery prompt, and Wan motion prompt.
-- `tts`: speech synthesis and audio cleanup.
-- `video`: still video, Wan loop, or Wan full base video.
-- `lipsync`: MuseTalk lip synchronization.
+## Two Distributions
+
+**Repo profile**
+
+- Default `APP_PROFILE=repo`.
+- EchoFrame checks external services and calls them through configured URLs/paths.
+- It does not resolve CUDA, torch, ComfyUI, MuseTalk, CosyVoice, or model dependencies.
+- `MODEL_DOWNLOADS_ENABLED=false` by default.
+
+**Windows portable profile**
+
+- Planned release package that ships prepared runtimes and launch scripts.
+- Models are still not bundled.
+- First run checks GPU/disk, downloads required models into a configured model directory, writes config, starts services, then runs health checks.
+- Build the portable package skeleton with `.\packaging\windows\New-PortablePackage.ps1`.
+- See [packaging/windows/README.md](packaging/windows/README.md).
+
+## Default Services
+
+| Service | Default | Required For | Config |
+|---|---:|---|---|
+| EchoFrame UI/API | `7860` | browser UI and API | `APP_HOST`, `APP_PORT` |
+| LM Studio | `1234` | LLM reply planning | `LLM_BASE_URL`; `LLM_MODEL` is optional |
+| CosyVoice HTTP | `9880` | speech synthesis in repo profile | `TTS_BACKEND`, `TTS_URL` |
+| ComfyUI | `8000` | `wan_loop` and `wan` modes | `COMFY_URL`, `COMFY_ROOT` |
+| MuseTalk | on-demand process | final lip sync | `MUSETALK_ROOT`, `MUSETALK_PYTHON` |
+| ffmpeg | `PATH` | probing/trim/encoding | `FFMPEG_BIN`, `FFPROBE_BIN` |
+
+Run this to print the machine-readable service manifest:
+
+```powershell
+python -m app.stack_control manifest
+```
+
+EchoFrame also checks services at app startup and writes a snapshot to `data/logs/startup_health.json`.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set your local engine paths there. Do not commit `.env`; it is ignored by git.
+Copy `.env.example` to `.env` and adjust it locally. Do not commit `.env`.
 
-Important local paths are configured through environment variables:
+Portable builds keep user config at `config/.env` and launch EchoFrame with `ECHOFRAME_ENV_FILE` pointing to that file. Repo users normally do not need this variable.
 
-- `TTS_ROOT`
-- `COMFY_ROOT`
-- `COMFY_BASE_DIR`
-- `COMFY_INPUT_DIR`
-- `COMFY_OUTPUT_DIR`
-- `COMFY_MODELS_DIR`
-- `MUSETALK_ROOT`
-- `MUSETALK_PYTHON`
+The repo profile expects you to run external services yourself:
 
-The committed defaults use generic `engines/...` placeholders so machine-specific paths and secrets stay local.
+- LM Studio OpenAI-compatible API at `LLM_BASE_URL`.
+- A CosyVoice-compatible HTTP service at `TTS_URL`, unless you explicitly set `TTS_BACKEND=native`.
+- ComfyUI with the required Wan2.2 workflow nodes and models.
+- A MuseTalk checkout/environment for on-demand lip sync.
+- ffmpeg/ffprobe on PATH or configured through `FFMPEG_BIN` and `FFPROBE_BIN`.
+
+Native CosyVoice support remains in the code for portable builds or advanced local setups. It uses `tools/native_cosyvoice_tts.py`, `TTS_ROOT`, `TTS_PYTHON`, and `TTS_PRESETS_FILE`, but repo users are not expected to make EchoFrame solve those dependencies.
+
+## Voice Presets
+
+The repo includes two small CosyVoice zero-shot reference clips under `assets/voices/`:
+
+- `TTS_FEMALE_VOICE_ID=4988cee6`
+- `TTS_MALE_VOICE_ID=21897fae`
+
+These are reference audio files, not model weights. Replace `assets/voices/presets.json` or point `TTS_PRESETS_FILE` elsewhere if you want different voices.
 
 ## No Models In Git
 
-EchoFrame is designed to run locally without storing model weights in the repository. Keep engines and model files in external local folders, then point `.env` to them.
-
-The repository ignores:
+EchoFrame does not store model weights in this repository. The repo ignores:
 
 - `engines/`
 - `models/`
@@ -42,106 +79,47 @@ The repository ignores:
 - common model weights such as `.safetensors`, `.gguf`, `.pth`, `.pt`, `.ckpt`, `.bin`
 - generated media such as `.mp4`, `.wav`, `.mp3`
 
-Use `bootstrap_stack.ps1 -Health` to check whether the local machine has the required models. Use `bootstrap_stack.ps1 -Download` only on a machine with enough disk space.
+The only committed wav files are the small reference clips in `assets/voices/`.
 
 ## Daily Run
 
-Lightweight UI/API start:
+Start the lightweight UI/API and run health checks:
 
 ```powershell
 .\restart_stack.ps1
 ```
 
-This starts EchoFrame and runs health checks. Heavy services are not started unless you request them from the UI or run the full stack command.
-
-Start every resident service:
+Check services without generating media:
 
 ```powershell
-.\restart_stack.ps1 -All
-```
-
-Stop EchoFrame plus resident TTS/ComfyUI services:
-
-```powershell
-.\kill_stack.ps1
-```
-
-Also unload/stop LM Studio server:
-
-```powershell
-.\kill_stack.ps1 -UnloadLlm
-```
-
-## Bootstrap
-
-Check required model files without downloading:
-
-```powershell
-.\bootstrap_stack.ps1 -Health
-```
-
-Download missing model files only when you explicitly request it:
-
-```powershell
-.\bootstrap_stack.ps1 -Download -Health
-```
-
-Bootstrap is idempotent: it checks the manifest first and downloads only missing model groups. Keep using the check-only command when disk space is tight.
-
-## Low-Disk Script Tests
-
-These commands do not download models or generate media:
-
-```powershell
-python -m app.bootstrap
 python -m app.stack_control status lm_studio cosyvoice comfyui musetalk ffmpeg gpu
-python -m pytest -q
 ```
 
-Use the lightweight restart command only when you want to test the UI/API process:
+Check model/service manifests without downloading:
 
 ```powershell
-.\restart_stack.ps1
+python -m app.bootstrap --health
 ```
 
-Avoid these until you have enough free space:
+`bootstrap_stack.ps1 -Download` is disabled in repo profile unless you set `MODEL_DOWNLOADS_ENABLED=true`. Model downloads belong to the portable first-run flow by default.
 
-```powershell
-.\bootstrap_stack.ps1 -Download
-.\restart_stack.ps1 -All
-```
+## API
 
-Managed model groups:
-
-- LM Studio model from `LLM_MODEL`
-- CosyVoice2 TTS model
-- official ComfyUI Wan2.2 I2V fp8_scaled files
-- MuseTalk model files
-
-## Services API
-
-EchoFrame exposes service-control endpoints for the UI:
-
+- `GET /api/service-manifest`
+- `GET /api/startup-health`
 - `GET /api/services`
 - `POST /api/services/{name}/start`
 - `POST /api/services/{name}/stop`
 - `POST /api/services/{name}/restart`
 - `GET /api/services/{name}/logs`
 
-Supported service names:
-
-- `lm_studio`
-- `cosyvoice`
-- `comfyui`
-- `musetalk`
-- `ffmpeg`
-- `gpu`
-
-`fast` mode does not require ComfyUI. `wan_loop` and `wan` start/check ComfyUI before generating the base video.
+`fast` mode does not require ComfyUI. `wan_loop` and `wan` require ComfyUI.
 
 ## Model Lifecycle
 
-- LLM model loading and unloading is still handled per request by the LM Studio client.
-- TTS and ComfyUI can be started or stopped from the UI.
+- EchoFrame uses the LLM currently loaded in LM Studio. Leave `LLM_MODEL` empty for this default behavior; set it only as an explicit override.
+- Repo profile uses external TTS by default.
+- Portable profile can use native CosyVoice worker.
+- Wan I2V defaults to the official ComfyUI Wan2.2 14B I2V graph with the 4-step LightX2V LoRA enabled. `WAN_PROFILE=wan22_5b_ti2v` is kept as an experimental benchmark profile only; current EchoFrame talking-head tests showed visible color banding/artifacts, so it is not recommended for production output.
 - Wan generation calls ComfyUI `/free` after use when `COMFY_UNLOAD_AFTER_WAN=true`.
 - MuseTalk runs as an on-demand child process for each lip-sync job.
