@@ -60,13 +60,42 @@ Also unload/stop LM Studio server:
 
 ## Bootstrap
 
-Download missing model files and optionally print health:
+Check required model files without downloading:
 
 ```powershell
 .\bootstrap_stack.ps1 -Health
 ```
 
-Bootstrap is idempotent: it checks the manifest first and downloads only missing model groups.
+Download missing model files only when you explicitly request it:
+
+```powershell
+.\bootstrap_stack.ps1 -Download -Health
+```
+
+Bootstrap is idempotent: it checks the manifest first and downloads only missing model groups. Keep using the check-only command when disk space is tight.
+
+## Low-Disk Script Tests
+
+These commands do not download models or generate media:
+
+```powershell
+python -m app.bootstrap
+python -m app.stack_control status lm_studio cosyvoice comfyui musetalk ffmpeg gpu
+python -m pytest -q
+```
+
+Use the lightweight restart command only when you want to test the UI/API process:
+
+```powershell
+.\restart_stack.ps1
+```
+
+Avoid these until you have enough free space:
+
+```powershell
+.\bootstrap_stack.ps1 -Download
+.\restart_stack.ps1 -All
+```
 
 Managed model groups:
 
