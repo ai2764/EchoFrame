@@ -251,6 +251,7 @@ class TalkingAvatarPipeline:
 
         user_message = str(previous.get("message") or "").strip()
         mode = str(previous.get("mode") or "fast")
+        final_video_backend = self._run_backend(previous)
         requested_resolution = self._output_resolution(int(previous.get("resolution") or self.settings.output_size))
         wan_resolution = int(previous.get("wan_render_resolution") or self._wan_resolution(requested_resolution))
         voice_id = str(previous.get("voice_id") or self.settings.tts_default_voice_id)
@@ -316,7 +317,7 @@ class TalkingAvatarPipeline:
 
         actual_resolution = requested_resolution
         video_prompt = plan["wan_prompt"]
-        if self.settings.final_video_backend == "ltx_ia2v":
+        if final_video_backend == "ltx_ia2v":
             video_prompt = self.llm.video_prompt_for_reply(plan["wan_prompt"], plan["reply"])
             start = time.perf_counter()
             yield {"type": "stage", "stage": "ltx_ia2v", "status": "running"}
@@ -396,7 +397,7 @@ class TalkingAvatarPipeline:
             "message": user_message,
             "llm_skipped": req.stage != "llm",
             "mode": mode,
-            "final_video_backend": self.settings.final_video_backend,
+            "final_video_backend": final_video_backend,
             "voice_id": voice_id,
             "resolution": actual_resolution,
             "wan_render_resolution": wan_resolution,
@@ -456,6 +457,14 @@ class TalkingAvatarPipeline:
 
     def _voice_language(self, text: str) -> str:
         return "zh" if any("\u4e00" <= char <= "\u9fff" for char in text) else "en"
+
+    def _run_backend(self, previous: dict) -> str:
+        backend = str(previous.get("final_video_backend") or "").strip()
+        if backend in {"ltx_ia2v", "musetalk"}:
+            return backend
+        if previous.get("ltx_input_audio") or previous.get("ltx_width") or previous.get("ltx_height"):
+            return "ltx_ia2v"
+        return "musetalk"
 
     def _load_run_meta(self, run_id: str) -> dict:
         path = self._previous_artifact(run_id, "reply.json")
