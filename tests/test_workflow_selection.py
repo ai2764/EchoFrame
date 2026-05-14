@@ -33,6 +33,7 @@ def test_chat_request_can_select_ltx_backend_when_default_is_musetalk(tmp_path):
     async def generate_ltx_video(**kwargs):
         nonlocal ltx_called
         ltx_called = True
+        assert kwargs["resolution"] == 512
         out = kwargs["run_dir"] / "ltx_raw.mp4"
         out.write_bytes(b"video")
         return out
@@ -51,11 +52,13 @@ def test_chat_request_can_select_ltx_backend_when_default_is_musetalk(tmp_path):
                 avatar_id="av_test",
                 message="hello",
                 final_video_backend="ltx_ia2v",
+                resolution=512,
             )
         )
     )
 
     assert response.final_video_backend == "ltx_ia2v"
+    assert response.resolution == 512
     assert ltx_called
     assert not musetalk_called
 

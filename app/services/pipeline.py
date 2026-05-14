@@ -133,7 +133,7 @@ class TalkingAvatarPipeline:
             yield {"type": "stage", "stage": "ltx_ia2v", "status": "running"}
             await asyncio.sleep(0.01)
             self._check_cancel(run_state)
-            ltx_resolution = self.video.ltx_output_size()
+            ltx_resolution = self.video.ltx_output_size(resolution)
             base_path = await self.video.generate_ltx_ia2v_video(
                 avatar_path=avatar_path,
                 audio_path=audio_path,
@@ -141,6 +141,7 @@ class TalkingAvatarPipeline:
                 audio_duration=audio_duration,
                 run_id=run_id,
                 run_dir=out_dir,
+                resolution=resolution,
                 run_state=run_state,
             )
             talk_path = out_dir / "final.mp4"
@@ -320,12 +321,13 @@ class TalkingAvatarPipeline:
         actual_resolution = requested_resolution
         video_prompt = plan["wan_prompt"]
         if final_video_backend == "ltx_ia2v":
+            ltx_requested_resolution = self._previous_ltx_resolution(previous, requested_resolution)
             video_prompt = self.llm.video_prompt_for_reply(plan["wan_prompt"], plan["reply"])
             start = time.perf_counter()
             yield {"type": "stage", "stage": "ltx_ia2v", "status": "running"}
             await asyncio.sleep(0.01)
             self._check_cancel(run_state)
-            ltx_resolution = self.video.ltx_output_size()
+            ltx_resolution = self.video.ltx_output_size(ltx_requested_resolution)
             base_path = await self.video.generate_ltx_ia2v_video(
                 avatar_path=avatar_path,
                 audio_path=audio_path,
@@ -333,6 +335,7 @@ class TalkingAvatarPipeline:
                 audio_duration=audio_duration,
                 run_id=run_id,
                 run_dir=out_dir,
+                resolution=ltx_requested_resolution,
                 run_state=run_state,
             )
             talk_path = out_dir / "final.mp4"
@@ -468,6 +471,13 @@ class TalkingAvatarPipeline:
         if previous.get("ltx_input_audio") or previous.get("ltx_width") or previous.get("ltx_height"):
             return "ltx_ia2v"
         return "musetalk"
+
+    def _previous_ltx_resolution(self, previous: dict, fallback: int) -> int:
+        for key in ("ltx_width", "ltx_height", "resolution"):
+            value = previous.get(key)
+            if value:
+                return self.video.ltx_output_size(int(value))
+        return self.video.ltx_output_size(fallback)
 
     def _load_run_meta(self, run_id: str) -> dict:
         path = self._previous_artifact(run_id, "reply.json")

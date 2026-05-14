@@ -48,6 +48,7 @@ def test_regenerate_video_reuses_previous_audio_and_updates_prompt(tmp_path):
 
     async def generate_video(**kwargs):
         assert kwargs["audio_path"].read_bytes() == b"audio"
+        assert kwargs["resolution"] == 768
         assert "zoom in" not in kwargs["prompt"].lower()
         assert "camera push-in" not in kwargs["prompt"].lower()
         out = kwargs["run_dir"] / "ltx_raw.mp4"

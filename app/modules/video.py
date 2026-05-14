@@ -99,11 +99,12 @@ class VideoGenerationModule:
         audio_duration: float,
         run_id: str,
         run_dir: Path,
+        resolution: int | None = None,
         run_state: RunState | None = None,
     ) -> Path:
         if self.services:
             await self.services.ensure("comfyui")
-        output_size = self.ltx_output_size()
+        output_size = self.ltx_output_size(resolution)
         return await self.comfy.generate_ltx_ia2v(
             image_path=avatar_path,
             audio_path=audio_path,
@@ -117,10 +118,13 @@ class VideoGenerationModule:
             fps=self.settings.ltx_fps,
         )
 
-    def ltx_output_size(self) -> int:
-        width = int(self.settings.ltx_width)
-        height = int(self.settings.ltx_height)
-        size = min(width, height)
+    def ltx_output_size(self, requested: int | None = None) -> int:
+        if requested is None:
+            width = int(self.settings.ltx_width)
+            height = int(self.settings.ltx_height)
+            size = min(width, height)
+        else:
+            size = int(requested)
         if size % 2:
             size -= 1
         return max(256, size)

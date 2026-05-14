@@ -147,3 +147,11 @@ def test_ltx_output_size_is_square_from_shorter_config_side(tmp_path):
     settings = Settings(data_dir=tmp_path / "data", ltx_width=1280, ltx_height=720)
 
     assert VideoGenerationModule(settings).ltx_output_size() == 720
+
+
+def test_ltx_output_size_uses_requested_resolution(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data", ltx_width=1280, ltx_height=720)
+
+    assert VideoGenerationModule(settings).ltx_output_size(512) == 512
+    assert VideoGenerationModule(settings).ltx_output_size(513) == 512
+    assert VideoGenerationModule(settings).ltx_output_size(120) == 256
