@@ -512,6 +512,11 @@ button:disabled {
   gap: 8px;
 }
 
+.workflowStack {
+  display: grid;
+  gap: 8px;
+}
+
 .settingsRow {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) 96px;
@@ -531,12 +536,20 @@ button:disabled {
   flex: 1;
 }
 
+.workflowGroup,
 .modeGroup {
   display: inline-grid;
-  grid-template-columns: repeat(3, 1fr);
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
+}
+
+.workflowGroup {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.modeGroup {
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .langGroup {
@@ -547,12 +560,14 @@ button:disabled {
   overflow: hidden;
 }
 
+.workflow,
 .mode,
 .lang {
   border: 0;
   border-radius: 0;
 }
 
+.workflow,
 .mode {
   min-width: 88px;
 }
@@ -562,6 +577,7 @@ button:disabled {
   padding-inline: 10px;
 }
 
+.workflow.active,
 .mode.active,
 .lang.active {
   background: var(--accent2);

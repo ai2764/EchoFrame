@@ -146,8 +146,6 @@ class ServiceManager:
             raise HTTPException(status_code=404, detail="unknown service")
 
     def _visible_services(self) -> tuple[str, ...]:
-        if self.settings.final_video_backend == "ltx_ia2v":
-            return ("lm_studio", "cosyvoice", "comfyui", "ffmpeg", "gpu")
         return ("lm_studio", "cosyvoice", "comfyui", "musetalk", "ffmpeg", "gpu")
 
     async def _health(self, name: str) -> tuple[bool, str]:

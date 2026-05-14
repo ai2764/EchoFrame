@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>EchoFrame</title>
-  <link rel="stylesheet" href="/static/styles.css?v=8">
+  <link rel="stylesheet" href="/static/styles.css?v=9">
 </head>
 <body>
   <main class="shell">
@@ -65,8 +65,16 @@
 
       <section class="panel main">
         <div class="toolbar">
-          <div class="modeGroup" role="group" aria-label="Mode" data-i18n-aria="mode">
-            <button class="mode active" data-mode="fast" type="button" data-i18n="modeFast">LTX IA2V</button>
+          <div class="workflowStack">
+            <div class="workflowGroup" role="group" aria-label="Workflow" data-i18n-aria="workflow">
+              <button class="workflow active" data-backend="ltx_ia2v" type="button" data-i18n="workflowLtx">LTX IA2V</button>
+              <button class="workflow" data-backend="musetalk" type="button" data-i18n="workflowWanMuseTalk">Wan + MuseTalk</button>
+            </div>
+            <div class="modeGroup" id="wanModeGroup" role="group" aria-label="Mode" data-i18n-aria="mode" hidden>
+              <button class="mode active" data-mode="fast" type="button" data-i18n="modeFast">Still + MuseTalk</button>
+              <button class="mode" data-mode="wan_loop" type="button" data-i18n="modeWanLoop">Wan Loop</button>
+              <button class="mode" data-mode="wan" type="button" data-i18n="modeWanFull">Wan Full</button>
+            </div>
           </div>
           <div class="toolbarActions">
             <div class="langGroup" role="group" aria-label="Language" data-i18n-aria="language">
@@ -132,7 +140,9 @@
               <dd id="instruct"></dd>
               <dt data-i18n="ttsSent">TTS Sent</dt>
               <dd id="ttsSent"></dd>
-              <dt>LTX IA2V</dt>
+              <dt data-i18n="workflow">Workflow</dt>
+              <dd id="resultWorkflow"></dd>
+              <dt data-i18n="videoPrompt">Video Prompt</dt>
               <dd id="wanPrompt"></dd>
               <dt data-i18n="audio">Audio</dt>
               <dd id="duration"></dd>
@@ -150,6 +160,6 @@
       </section>
     </section>
   </main>
-  <script src="/static/app.js?v=27"></script>
+  <script src="/static/app.js?v=28"></script>
 </body>
 </html>

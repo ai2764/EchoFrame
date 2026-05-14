@@ -1,5 +1,6 @@
 let avatarId = null;
 let mode = "fast";
+let videoBackend = "ltx_ia2v";
 let currentController = null;
 let serverRunActive = false;
 let lastStatusRunId = "";
@@ -20,12 +21,13 @@ const STAGES = [
   ["tts", "stageTts"],
   ["audio_probe", "stageAudioProbe"],
   ["ltx_ia2v", "stageLtxIa2v"],
+  ["base_video", "stageBaseVideo"],
+  ["musetalk", "stageMuseTalk"],
   ["total", "stageTotal"],
 ];
-const MODE_LABELS = {
-  fast: "runningLtxIa2v",
-  wan_loop: "runningLtxIa2v",
-  wan: "runningLtxIa2v",
+const WORKFLOW_LABELS = {
+  ltx_ia2v: "workflowLtx",
+  musetalk: "workflowWanMuseTalk",
 };
 const SERVICE_LABELS = {
   lm_studio: "LM Studio",
@@ -48,7 +50,11 @@ const TRANSLATIONS = {
     avatar: "头像",
     mode: "模式",
     language: "语言",
-    modeFast: "LTX IA2V",
+    workflow: "工作流",
+    workflowLtx: "LTX IA2V",
+    workflowWanMuseTalk: "Wan + MuseTalk",
+    videoPrompt: "视频提示词",
+    modeFast: "静图 + MuseTalk",
     modeWanLoop: "Wan 循环",
     modeWanFull: "Wan 完整",
     resolution: "分辨率",
@@ -128,9 +134,13 @@ const TRANSLATIONS = {
     gpuUnavailable: "GPU unavailable",
     utilization: "Utilization",
     avatar: "Avatar",
+    workflow: "Workflow",
+    workflowLtx: "LTX IA2V",
+    workflowWanMuseTalk: "Wan + MuseTalk",
+    videoPrompt: "Video Prompt",
     mode: "Mode",
     language: "Language",
-    modeFast: "LTX IA2V",
+    modeFast: "Still + MuseTalk",
     modeWanLoop: "Wan Loop",
     modeWanFull: "Wan Full",
     resolution: "Resolution",
@@ -582,7 +592,7 @@ async function generate() {
   lastStatusRunId = "";
   lastRenderedResultRunId = "";
   resetRunStatus();
-  setStateKey(MODE_LABELS[mode] || "running");
+  setStateKey(runningStateKey());
   try {
     const res = await fetch("/api/chat-stream", {
       method: "POST",
@@ -593,6 +603,7 @@ async function generate() {
         message,
         reply_override: replyOverride || null,
         mode,
+        final_video_backend: videoBackend,
         voice: $("voiceChoice").value,
         resolution: getResolution(),
       }),
@@ -721,6 +732,7 @@ function renderResult(data) {
   $("reply").textContent = data.reply;
   $("instruct").textContent = data.cosyvoice_instruct;
   $("ttsSent").textContent = data.tts_instruct_sent || tr("ttsPresetVoice");
+  $("resultWorkflow").textContent = workflowLabel(data.final_video_backend || videoBackend);
   $("wanPrompt").textContent = data.wan_prompt;
   $("duration").textContent = `${data.audio_duration}s`;
   $("resultResolution").textContent = data.resolution ? `${data.resolution}x${data.resolution}` : "";
@@ -737,6 +749,34 @@ function updateRegenerateButtons() {
   for (const id of ["regenLlm", "regenTts", "regenVideo"]) {
     const button = $(id);
     if (button) button.disabled = disabled;
+  }
+}
+
+function runningStateKey() {
+  if (videoBackend === "ltx_ia2v") return "runningLtxIa2v";
+  if (mode === "wan_loop") return "runningWanLoop";
+  if (mode === "wan") return "runningWan";
+  return "runningMuseTalk";
+}
+
+function workflowLabel(backend) {
+  return tr(WORKFLOW_LABELS[backend] || "workflow");
+}
+
+function updateWorkflowControls() {
+  const useMusetalk = videoBackend === "musetalk";
+  const modeGroup = $("wanModeGroup");
+  if (modeGroup) {
+    modeGroup.hidden = !useMusetalk;
+    modeGroup.querySelectorAll("button").forEach((button) => {
+      button.disabled = !useMusetalk;
+    });
+  }
+  if (!useMusetalk) {
+    mode = "fast";
+    document.querySelectorAll(".mode").forEach((button) => {
+      button.classList.toggle("active", button.dataset.mode === mode);
+    });
   }
 }
 
@@ -784,6 +824,15 @@ function setResolution(value) {
   $("resolutionNumber").value = resolution;
   $("resolutionValue").textContent = resolution;
 }
+
+document.querySelectorAll(".workflow").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll(".workflow").forEach((b) => b.classList.remove("active"));
+    button.classList.add("active");
+    videoBackend = button.dataset.backend;
+    updateWorkflowControls();
+  });
+});
 
 document.querySelectorAll(".mode").forEach((button) => {
   button.addEventListener("click", () => {
@@ -859,6 +908,7 @@ $("services").addEventListener("click", async (event) => {
   }
 });
 initStageStatus();
+updateWorkflowControls();
 applyTranslations();
 setResolution(RESOLUTION_DEFAULT);
 refreshAll();

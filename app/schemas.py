@@ -13,6 +13,7 @@ class ChatRequest(BaseModel):
     message: str = Field(default="", max_length=1000)
     reply_override: str | None = Field(default=None, max_length=2000)
     mode: Literal["fast", "wan_loop", "wan"] = "fast"
+    final_video_backend: Literal["ltx_ia2v", "musetalk"] | None = None
     voice_id: str | None = None
     voice: Literal["female", "male"] | None = None
     resolution: int | None = Field(default=None, ge=120, le=512)
@@ -36,6 +37,7 @@ class ChatResponse(BaseModel):
     video_url: str
     mode: str
     resolution: int
+    final_video_backend: str = ""
 
 
 class ServiceStatus(BaseModel):

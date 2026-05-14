@@ -161,13 +161,13 @@ def test_http_tts_is_external_not_local_install(tmp_path):
     assert not manager._startable("cosyvoice")
 
 
-def test_ltx_backend_hides_musetalk_from_service_status(tmp_path):
+def test_workflow_selection_keeps_musetalk_visible_in_service_status(tmp_path):
     settings = Settings(data_dir=tmp_path / "data", final_video_backend="ltx_ia2v")
     manifest = service_manifest(settings)
     manager = ServiceManager(settings)
 
-    assert "musetalk" not in {item["name"] for item in manifest["services"]}
-    assert "musetalk" not in manager._visible_services()
+    assert "musetalk" in {item["name"] for item in manifest["services"]}
+    assert "musetalk" in manager._visible_services()
 
 
 def test_gpu_process_memory_na_is_not_displayed_as_value():

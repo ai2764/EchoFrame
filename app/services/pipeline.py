@@ -73,6 +73,7 @@ class TalkingAvatarPipeline:
         timings: dict[str, float] = {}
         resolution = self._output_resolution(req.resolution)
         wan_resolution = self._wan_resolution(resolution)
+        final_video_backend = req.final_video_backend or self.settings.final_video_backend
         av_dir = avatar_dir(self.settings, req.avatar_id)
         avatar_path = av_dir / "source.png"
         if not avatar_path.exists():
@@ -126,7 +127,7 @@ class TalkingAvatarPipeline:
         await asyncio.sleep(0.01)
 
         actual_resolution = resolution
-        if self.settings.final_video_backend == "ltx_ia2v":
+        if final_video_backend == "ltx_ia2v":
             video_prompt = self.llm.video_prompt_for_reply(plan["wan_prompt"], plan["reply"])
             start = time.perf_counter()
             yield {"type": "stage", "stage": "ltx_ia2v", "status": "running"}
@@ -203,7 +204,7 @@ class TalkingAvatarPipeline:
             "message": user_message,
             "llm_skipped": bool(manual_reply),
             "mode": req.mode,
-            "final_video_backend": self.settings.final_video_backend,
+            "final_video_backend": final_video_backend,
             "voice_id": voice_id,
             "resolution": actual_resolution,
             "wan_render_resolution": wan_resolution,
@@ -230,6 +231,7 @@ class TalkingAvatarPipeline:
             video_url=media_url(self.settings, talk_path),
             mode=req.mode,
             resolution=actual_resolution,
+            final_video_backend=final_video_backend,
         )
         yield {"type": "result", "data": response.model_dump()}
 
@@ -424,6 +426,7 @@ class TalkingAvatarPipeline:
             video_url=media_url(self.settings, talk_path),
             mode=mode,
             resolution=actual_resolution,
+            final_video_backend=final_video_backend,
         )
         yield {"type": "result", "data": response.model_dump()}
 
