@@ -164,6 +164,31 @@ class MediaTools:
         finally:
             pingpong_path.unlink(missing_ok=True)
 
+    def mux_audio(self, video_path: Path, audio_path: Path, output_path: Path) -> None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            self.settings.ffmpeg_bin,
+            "-y",
+            "-i",
+            str(video_path),
+            "-i",
+            str(audio_path),
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ]
+        self._run(cmd, timeout=300)
+
     def wan_length_for_duration(self, duration: float) -> int:
         frames = max(17, int(math.ceil(duration * self.settings.wan_fps)))
         return int(math.ceil((frames - 1) / 4) * 4 + 1)

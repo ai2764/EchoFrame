@@ -4,6 +4,21 @@ import re
 import httpx
 
 from app.config import Settings
+from app.services.chinese import to_simplified_chinese
+
+
+VIDEO_IDENTITY_ANCHOR = (
+    "Preserve the same identity as the reference image, front-facing head-and-shoulders bust shot "
+    "in stable 1:1 framing, full head, hairline, chin, neck, and shoulders visible, clean studio lighting."
+)
+VIDEO_MOTION_ANCHOR = (
+    "Visible but realistic motion throughout: lips part, the mouth opens and closes naturally with "
+    "moderate speech articulation, and lips, jaw, cheeks, and chin move in sync with the supplied "
+    "voice audio; clear vowel and consonant mouth shapes without exaggeration; natural blinks and "
+    "eyebrow micro-expressions; gentle head turns and nods; breathing, small shoulder and torso "
+    "shifts; locked-off camera, stable framing, and consistent head size throughout. Looks like live "
+    "video, not a static portrait or frozen frame."
+)
 
 
 class LLMClient:
@@ -146,7 +161,7 @@ Schema:
 {{
   "reply": "spoken reply in the same language as the user's input, max {self.settings.max_reply_chars} characters",
   "cosyvoice_instruct": "voice delivery style in the same language as the user's input, short",
-  "wan_prompt": "English Wan2.2 image-to-video prompt for a square talking avatar base video"
+  "wan_prompt": "English video prompt for an image-and-audio-to-video talking avatar"
 }}
 
 Rules:
@@ -158,11 +173,19 @@ Rules:
 - Prefer stable styles such as calm, natural, and clear. Avoid dramatic emotion,
   broadcasting voice, exaggerated delivery, seductive delivery, shouting,
   whispered delivery, or role-playing.
-- wan_prompt must preserve the same person from the input image.
-- wan_prompt should describe a front-facing bust shot, subtle blinking, slight nodding,
-  small shoulder movement, steady camera, clean studio lighting.
-- Do not ask Wan to animate detailed mouth speech. MuseTalk will handle the mouth.
-- Avoid words such as wide open mouth, exaggerated speaking, yelling, distorted face.
+- wan_prompt must preserve the same person from the input image and use the supplied
+  voice audio as the speech timing.
+- wan_prompt must explicitly request visible but realistic motion throughout. Include
+  lips parting, the mouth opening and closing naturally with moderate speech articulation,
+  lips, jaw, cheeks, and chin moving in sync with the supplied audio, clear vowel and
+  consonant mouth shapes, natural blinks, eyebrow micro-expressions, gentle head turns
+  and nods, breathing, and small shoulder and torso shifts.
+- wan_prompt must keep stable 1:1 head-and-shoulders framing with full head, hairline,
+  chin, neck, and shoulders visible. Use a locked-off camera and consistent head size.
+- wan_prompt should say the result looks like live video, not a static portrait or
+  frozen frame.
+- Avoid words such as zoom in, camera push-in, cropped face, extreme close-up,
+  wide open mouth, exaggerated speaking, yelling, distorted face.
 """.strip()
 
     def _extract_json(self, text: str) -> dict:
@@ -180,10 +203,12 @@ Rules:
         wan_prompt = str(data.get("wan_prompt", "")).strip()
         if not reply:
             reply = self._fallback("")["reply"]
+        reply = to_simplified_chinese(reply)
         if len(reply) > self.settings.max_reply_chars:
             reply = reply[: self.settings.max_reply_chars].rstrip(" ,.;:!?")
         if not instruct:
             instruct = "\u5e73\u7a33\u3001\u81ea\u7136\u3001\u6e05\u6670"
+        instruct = to_simplified_chinese(instruct)
         if not wan_prompt:
             wan_prompt = self._fallback("")["wan_prompt"]
         return {
@@ -192,10 +217,48 @@ Rules:
             "wan_prompt": self._sanitize_wan_prompt(wan_prompt),
         }
 
+    def default_video_prompt(self) -> str:
+        return f"{VIDEO_IDENTITY_ANCHOR} {VIDEO_MOTION_ANCHOR}"
+
+    def video_prompt_for_reply(self, prompt: str, spoken_text: str) -> str:
+        prompt = self._sanitize_wan_prompt(prompt)
+        prompt = re.sub(
+            r'\s*The person clearly speaks this exact line from start to finish: ".*?"\. '
+            r"The mouth opens and closes naturally, with visible lip shapes matching this line "
+            r"and the supplied voice audio\.",
+            "",
+            prompt,
+            flags=re.I,
+        )
+        line = re.sub(r"\s+", " ", spoken_text or "").strip()
+        if not line:
+            return prompt
+        max_line_chars = 180
+        if len(line) > max_line_chars:
+            line = line[:max_line_chars].rstrip(" ,.;:!?，。；：！？") + "..."
+        line = line.replace('"', "'")
+        spoken_anchor = (
+            f' The person clearly speaks this exact line from start to finish: "{line}". '
+            "The mouth opens and closes naturally, with visible lip shapes matching this line "
+            "and the supplied voice audio."
+        )
+        return re.sub(r"\s+", " ", f"{prompt} {spoken_anchor}").strip()
+
     def _sanitize_wan_prompt(self, prompt: str) -> str:
         banned = [
+            "camera push-in",
+            "camera push in",
+            "push-in",
+            "push in",
+            "zoom in",
+            "zooming in",
+            "zoomin",
+            "mild parallax",
+            "parallax",
+            "close-up crop",
+            "cropped face",
+            "extreme close-up",
             "wide open mouth",
-            "open mouth",
             "yelling",
             "screaming",
             "exaggerated speaking",
@@ -204,13 +267,11 @@ Rules:
         clean = prompt
         for word in banned:
             clean = re.sub(re.escape(word), "", clean, flags=re.I)
-        anchor = (
-            " Preserve the same identity as the reference image, front-facing bust shot, "
-            "subtle blinking, slight nodding, small shoulder movement, steady camera, "
-            "clean studio lighting, natural neutral mouth before lip-sync."
-        )
-        if "preserve" not in clean.lower():
-            clean += anchor
+        clean_lower = clean.lower()
+        if "preserve" not in clean_lower and "same identity" not in clean_lower:
+            clean += " " + VIDEO_IDENTITY_ANCHOR
+        if "visible but realistic motion" not in clean_lower or "locked-off camera" not in clean_lower:
+            clean += " " + VIDEO_MOTION_ANCHOR
         return re.sub(r"\s+", " ", clean).strip()
 
     def _fallback(self, message: str) -> dict:
@@ -224,11 +285,7 @@ Rules:
         return {
             "reply": reply,
             "cosyvoice_instruct": instruct,
-            "wan_prompt": (
-                "A front-facing talking avatar, medium close-up bust shot, subtle blinking, "
-                "slight nodding, small shoulder movement, calm natural expression, "
-                "steady camera, soft studio lighting."
-            ),
+            "wan_prompt": self.default_video_prompt(),
         }
 
     def _looks_english(self, text: str) -> bool:

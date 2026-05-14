@@ -9,6 +9,7 @@ from app.config import Settings
 from app.schemas import ChatRequest
 from app.services.pipeline import TalkingAvatarPipeline
 from app.services.tts import TTSClient
+from tools.native_cosyvoice_tts import prep_text_for_tts, should_use_short_text_instruct
 
 
 def test_native_tts_health_reports_missing_parts():
@@ -101,6 +102,19 @@ def test_http_tts_never_trims_audio(monkeypatch, tmp_path):
     asyncio.run(client._synthesize_http("你好", "", "voice", output))
 
     assert output.read_bytes() == response_bytes
+
+
+def test_native_tts_prep_adds_terminal_punctuation():
+    assert prep_text_for_tts("你好") == "你好。"
+    assert prep_text_for_tts("hello") == "hello."
+    assert prep_text_for_tts("你好！") == "你好！"
+
+
+def test_native_tts_short_text_uses_instruct2_guard():
+    ref = "大家好，这是用于展示声线的一段比较长的参考音频。"
+
+    assert should_use_short_text_instruct("你好。", ref)
+    assert not should_use_short_text_instruct("这是一段长度足够的口播文本，用来生成稳定的语音。", ref)
 
 
 def make_workspace_tmp() -> Path:

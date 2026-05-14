@@ -18,6 +18,11 @@ class ChatRequest(BaseModel):
     resolution: int | None = Field(default=None, ge=120, le=512)
 
 
+class RegenerateRequest(BaseModel):
+    run_id: str
+    stage: Literal["llm", "tts", "video"]
+
+
 class ChatResponse(BaseModel):
     run_id: str
     reply: str

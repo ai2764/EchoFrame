@@ -64,6 +64,43 @@ def test_wan_manifest_uses_5b_files_when_profile_selected(tmp_path):
     assert "loras/" not in check.detail
 
 
+def test_ltx_manifest_accepts_fallback_lora(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path / "data",
+        comfy_models_dir=tmp_path / "models",
+        final_video_backend="ltx_ia2v",
+    )
+    for folder, name in (
+        ("checkpoints", settings.ltx_checkpoint),
+        ("text_encoders", settings.ltx_text_encoder),
+        ("latent_upscale_models", settings.ltx_upscale_model),
+        ("loras", settings.ltx_lora_fallback),
+    ):
+        target = settings.comfy_models_dir / folder / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"model")
+
+    check = ModelManifest(settings).check_ltx_ia2v()
+
+    assert check.ok
+    assert f"using fallback LoRA {settings.ltx_lora_fallback}" in check.detail
+
+
+def test_ltx_fast_manifest_does_not_require_lora(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path / "data",
+        comfy_models_dir=tmp_path / "models",
+        final_video_backend="ltx_ia2v",
+        ltx_profile="fast",
+    )
+
+    check = ModelManifest(settings).check_ltx_ia2v()
+
+    assert not check.ok
+    assert f"checkpoints/{settings.ltx_fast_checkpoint}" in check.detail
+    assert "loras/" not in check.detail
+
+
 def test_wan_download_uses_model_local_temp_dir(tmp_path, monkeypatch):
     settings = Settings(
         data_dir=tmp_path / "data",
@@ -122,6 +159,15 @@ def test_http_tts_is_external_not_local_install(tmp_path):
 
     assert manager._installed("cosyvoice")
     assert not manager._startable("cosyvoice")
+
+
+def test_ltx_backend_hides_musetalk_from_service_status(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data", final_video_backend="ltx_ia2v")
+    manifest = service_manifest(settings)
+    manager = ServiceManager(settings)
+
+    assert "musetalk" not in {item["name"] for item in manifest["services"]}
+    assert "musetalk" not in manager._visible_services()
 
 
 def test_gpu_process_memory_na_is_not_displayed_as_value():

@@ -4,6 +4,7 @@ let currentController = null;
 let serverRunActive = false;
 let lastStatusRunId = "";
 let lastRenderedResultRunId = "";
+let lastResult = null;
 let servicesPollInFlight = false;
 let gpuPollInFlight = false;
 let runStatusPollInFlight = false;
@@ -18,14 +19,13 @@ const STAGES = [
   ["llm", "stageLlm"],
   ["tts", "stageTts"],
   ["audio_probe", "stageAudioProbe"],
-  ["base_video", "stageBaseVideo"],
-  ["musetalk", "stageMuseTalk"],
+  ["ltx_ia2v", "stageLtxIa2v"],
   ["total", "stageTotal"],
 ];
 const MODE_LABELS = {
-  fast: "runningMuseTalk",
-  wan_loop: "runningWanLoop",
-  wan: "runningWan",
+  fast: "runningLtxIa2v",
+  wan_loop: "runningLtxIa2v",
+  wan: "runningLtxIa2v",
 };
 const SERVICE_LABELS = {
   lm_studio: "LM Studio",
@@ -48,7 +48,7 @@ const TRANSLATIONS = {
     avatar: "头像",
     mode: "模式",
     language: "语言",
-    modeFast: "快速",
+    modeFast: "LTX IA2V",
     modeWanLoop: "Wan 循环",
     modeWanFull: "Wan 完整",
     resolution: "分辨率",
@@ -96,6 +96,7 @@ const TRANSLATIONS = {
     running: "运行中",
     runningRun: "运行中 {id}",
     runningMuseTalk: "正在运行 MuseTalk",
+    runningLtxIa2v: "正在运行 LTX IA2V",
     runningWanLoop: "正在运行 Wan Loop + MuseTalk",
     runningWan: "正在运行 Wan Full + MuseTalk",
     cancelledState: "已取消",
@@ -104,6 +105,7 @@ const TRANSLATIONS = {
     stageAudioProbe: "音频检查",
     stageBaseVideo: "底片",
     stageMuseTalk: "MuseTalk",
+    stageLtxIa2v: "LTX IA2V",
     stageTotal: "总计",
     notRun: "未运行",
     stageRunning: "运行中",
@@ -111,6 +113,11 @@ const TRANSLATIONS = {
     stageCancelled: "已取消",
     stageFailed: "失败",
     ttsPresetVoice: "(空；使用稳定预设声音)",
+    regenLlm: "重新生成文本",
+    regenTts: "重新生成语音",
+    regenVideo: "重新生成视频",
+    regenerateNeedResult: "请先完成一次生成",
+    regeneratingStage: "正在重新生成 {stage}",
   },
   en: {
     idle: "Idle",
@@ -123,7 +130,7 @@ const TRANSLATIONS = {
     avatar: "Avatar",
     mode: "Mode",
     language: "Language",
-    modeFast: "Fast",
+    modeFast: "LTX IA2V",
     modeWanLoop: "Wan Loop",
     modeWanFull: "Wan Full",
     resolution: "Resolution",
@@ -171,6 +178,7 @@ const TRANSLATIONS = {
     running: "Running",
     runningRun: "Running {id}",
     runningMuseTalk: "Running MuseTalk",
+    runningLtxIa2v: "Running LTX IA2V",
     runningWanLoop: "Running Wan Loop + MuseTalk",
     runningWan: "Running Wan Full + MuseTalk",
     cancelledState: "Cancelled",
@@ -179,6 +187,7 @@ const TRANSLATIONS = {
     stageAudioProbe: "Audio Probe",
     stageBaseVideo: "Base Video",
     stageMuseTalk: "MuseTalk",
+    stageLtxIa2v: "LTX IA2V",
     stageTotal: "Total",
     notRun: "not run",
     stageRunning: "running",
@@ -186,6 +195,11 @@ const TRANSLATIONS = {
     stageCancelled: "cancelled",
     stageFailed: "failed",
     ttsPresetVoice: "(empty; stable preset voice)",
+    regenLlm: "Regenerate Text",
+    regenTts: "Regenerate Voice",
+    regenVideo: "Regenerate Video",
+    regenerateNeedResult: "Generate a result first",
+    regeneratingStage: "Regenerating {stage}",
   },
 };
 
@@ -312,6 +326,7 @@ function resetRunStatus() {
 function setRunning(running) {
   $("send").disabled = running;
   $("stop").disabled = !running;
+  updateRegenerateButtons();
 }
 
 function setServerRunActive(active) {
@@ -597,6 +612,40 @@ async function generate() {
   }
 }
 
+async function regenerate(stage) {
+  if (!lastResult || !lastResult.run_id) throw new Error(tr("regenerateNeedResult"));
+  const controller = new AbortController();
+  currentController = controller;
+  setRunning(true);
+  lastStatusRunId = "";
+  lastRenderedResultRunId = "";
+  resetRunStatus();
+  setStateKey("regeneratingStage", { stage: regenerateStageLabel(stage) });
+  try {
+    const res = await fetch("/api/regenerate-stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        run_id: lastResult.run_id,
+        stage,
+      }),
+    });
+    if (!res.ok || !res.body) throw new Error(tr("generationFailed"));
+    await readEventStream(res.body);
+    setStateKey("done");
+  } catch (err) {
+    if (err.name === "AbortError") {
+      setStateKey("stopped");
+      return;
+    }
+    throw err;
+  } finally {
+    if (currentController === controller) currentController = null;
+    setRunning(false);
+  }
+}
+
 async function readEventStream(body) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -668,6 +717,7 @@ async function stopWorkflow() {
 function renderResult(data) {
   const runId = data.run_id || "";
   if (runId && runId === lastRenderedResultRunId) return;
+  lastResult = data;
   $("reply").textContent = data.reply;
   $("instruct").textContent = data.cosyvoice_instruct;
   $("ttsSent").textContent = data.tts_instruct_sent || tr("ttsPresetVoice");
@@ -679,6 +729,22 @@ function renderResult(data) {
     .join("");
   setMediaSrc($("video"), data.video_url);
   if (runId) lastRenderedResultRunId = runId;
+  updateRegenerateButtons();
+}
+
+function updateRegenerateButtons() {
+  const disabled = Boolean(currentController || serverRunActive || !lastResult?.run_id);
+  for (const id of ["regenLlm", "regenTts", "regenVideo"]) {
+    const button = $(id);
+    if (button) button.disabled = disabled;
+  }
+}
+
+function regenerateStageLabel(stage) {
+  if (stage === "llm") return tr("regenLlm");
+  if (stage === "tts") return tr("regenTts");
+  if (stage === "video") return tr("regenVideo");
+  return stage;
 }
 
 function timingLabel(key) {
@@ -688,6 +754,7 @@ function timingLabel(key) {
     audio_probe: "stageAudioProbe",
     base_video: "stageBaseVideo",
     musetalk: "stageMuseTalk",
+    ltx_ia2v: "stageLtxIa2v",
     total: "stageTotal",
   };
   return labels[key] ? tr(labels[key]) : key;
@@ -756,6 +823,30 @@ $("send").addEventListener("click", async () => {
 });
 
 $("stop").addEventListener("click", stopWorkflow);
+$("regenLlm").addEventListener("click", async () => {
+  try {
+    await regenerate("llm");
+  } catch (err) {
+    setRunError(err.message);
+    setStateKey("failed");
+  }
+});
+$("regenTts").addEventListener("click", async () => {
+  try {
+    await regenerate("tts");
+  } catch (err) {
+    setRunError(err.message);
+    setStateKey("failed");
+  }
+});
+$("regenVideo").addEventListener("click", async () => {
+  try {
+    await regenerate("video");
+  } catch (err) {
+    setRunError(err.message);
+    setStateKey("failed");
+  }
+});
 $("refreshAllStatus").addEventListener("click", refreshAll);
 $("refreshServices").addEventListener("click", refreshServices);
 $("services").addEventListener("click", async (event) => {

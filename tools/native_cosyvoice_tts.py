@@ -5,6 +5,7 @@ import io
 import json
 import os
 import random
+import re
 import sys
 import traceback
 from pathlib import Path
@@ -194,6 +195,8 @@ def generate_to_file(
     set_seed(random.randint(1, 10**8))
     tts_text = prep_text_for_tts(text)
     instruct = instruct.strip()
+    if not instruct and should_use_short_text_instruct(tts_text, preset["ref_text"]):
+        instruct = neutral_instruct_for_text(tts_text)
     parts = []
     if instruct:
         directive = to_instruct2_prompt(instruct)
@@ -230,13 +233,29 @@ def generate_to_file(
 
 
 def prep_text_for_tts(text: str) -> str:
-    return (
-        text.strip()
-        .replace("。", "。 ")
-        .replace("，", "， ")
-        .replace("！", "！ ")
-        .replace("？", "？ ")
-    )
+    clean = re.sub(r"\s+", " ", text.strip())
+    clean = re.sub(r"\s+([，。！？；：、,.!?;:])", r"\1", clean)
+    if clean and clean[-1] not in "。！？；：,.!?;:":
+        clean += "。" if looks_cjk(clean) else "."
+    return clean
+
+
+def should_use_short_text_instruct(tts_text: str, ref_text: str) -> bool:
+    text_len = content_len(tts_text)
+    ref_len = content_len(ref_text)
+    return 0 < text_len < max(8, int(ref_len * 0.5))
+
+
+def content_len(text: str) -> int:
+    return sum(1 for char in text if not char.isspace() and char not in "。！？；：、,.!?;:")
+
+
+def neutral_instruct_for_text(text: str) -> str:
+    return "平稳自然清晰" if looks_cjk(text) else "natural clear"
+
+
+def looks_cjk(text: str) -> bool:
+    return any("\u4e00" <= char <= "\u9fff" for char in text)
 
 
 def to_instruct2_prompt(instruct: str) -> str:

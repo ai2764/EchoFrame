@@ -27,6 +27,11 @@ WAN_LORA_FILES = [
     ("loras", "split_files/loras/{name}", "wan_high_lora"),
     ("loras", "split_files/loras/{name}", "wan_low_lora"),
 ]
+LTX_FILES = [
+    ("checkpoints", "ltx_checkpoint"),
+    ("text_encoders", "ltx_text_encoder"),
+    ("latent_upscale_models", "ltx_upscale_model"),
+]
 
 
 @dataclass(frozen=True)
@@ -41,12 +46,14 @@ class ModelManifest:
         self.settings = settings
 
     def check_all(self) -> dict[str, ModelCheck]:
-        return {
+        checks = {
             "lm_studio": self.check_llm(),
             "cosyvoice": self.check_tts(),
-            "comfyui": self.check_wan(),
-            "musetalk": self.check_musetalk(),
+            "comfyui": self.check_video_models(),
         }
+        if self.settings.final_video_backend == "musetalk":
+            checks["musetalk"] = self.check_musetalk()
+        return checks
 
     def check_llm(self) -> ModelCheck:
         if not self.settings.llm_model.strip():
@@ -92,6 +99,32 @@ class ModelManifest:
         ok = not missing
         return ModelCheck("comfyui", ok, "model present" if ok else "missing: " + ", ".join(missing[:4]))
 
+    def check_video_models(self) -> ModelCheck:
+        if self.settings.final_video_backend == "ltx_ia2v":
+            return self.check_ltx_ia2v()
+        return self.check_wan()
+
+    def check_ltx_ia2v(self) -> ModelCheck:
+        missing = []
+        for folder, setting_name in LTX_FILES:
+            if setting_name == "ltx_checkpoint" and self.settings.ltx_profile == "fast":
+                setting_name = "ltx_fast_checkpoint"
+            name = str(getattr(self.settings, setting_name))
+            target = self.comfy_models_dir / folder / name
+            if not target.exists():
+                missing.append(f"{folder}/{name}")
+        lora_name = ""
+        if self.settings.ltx_profile == "quality":
+            lora_name = self._existing_ltx_lora()
+            if not lora_name:
+                names = self._ltx_lora_candidates()
+                missing.append("loras/" + " or ".join(names))
+        ok = not missing
+        detail = "model present"
+        if ok and lora_name and lora_name != self.settings.ltx_lora:
+            detail = f"model present; using fallback LoRA {lora_name}"
+        return ModelCheck("comfyui", ok, detail if ok else "missing: " + ", ".join(missing[:4]))
+
     def check_musetalk(self) -> ModelCheck:
         required = [
             "models/musetalkV15/unet.pth",
@@ -113,10 +146,12 @@ class ModelManifest:
         if not self.check_tts().ok:
             self._download_tts()
             completed.append("cosyvoice")
-        if not self.check_wan().ok:
+        if not self.check_video_models().ok:
+            if self.settings.final_video_backend == "ltx_ia2v":
+                raise RuntimeError("automatic LTX IA2V model download is not configured; place the LTX models in ComfyUI models")
             self._download_wan()
             completed.append("comfyui")
-        if not self.check_musetalk().ok:
+        if self.settings.final_video_backend == "musetalk" and not self.check_musetalk().ok:
             self._download_musetalk()
             completed.append("musetalk")
         return completed
@@ -142,6 +177,20 @@ class ModelManifest:
         if self.settings.wan_use_4step_lora:
             files.extend(WAN_LORA_FILES)
         return files
+
+    def _ltx_lora_candidates(self) -> list[str]:
+        names = []
+        for setting_name in ("ltx_lora", "ltx_lora_fallback"):
+            name = str(getattr(self.settings, setting_name, "")).strip()
+            if name and name not in names:
+                names.append(name)
+        return names
+
+    def _existing_ltx_lora(self) -> str:
+        for name in self._ltx_lora_candidates():
+            if (self.comfy_models_dir / "loras" / name).exists():
+                return name
+        return ""
 
     def _download_tts(self) -> None:
         model_dir = self.settings.tts_model_dir or self.settings.tts_root / "pretrained_models" / "CosyVoice2-0.5B"

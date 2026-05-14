@@ -1,4 +1,5 @@
 from app.config import Settings
+from app.modules.video import VideoGenerationModule
 from app.services.comfy import ComfyClient
 
 
@@ -70,3 +71,79 @@ def test_wan_5b_workflow_uses_official_ti2v_nodes(tmp_path):
     assert prompt["11"]["class_type"] == "CreateVideo"
     assert prompt["12"]["class_type"] == "SaveVideo"
     assert "18" not in prompt
+
+
+def test_ltx_ia2v_workflow_uses_image_audio_inputs(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data", final_video_backend="ltx_ia2v")
+    workflow = ComfyClient(settings)._ltx_ia2v_workflow(
+        image_name="avatar.png",
+        audio_name="voice.wav",
+        prompt="natural talking avatar",
+        video_prefix="test_ltx",
+        duration=3.2,
+        seed=123,
+        width=768,
+        height=768,
+        fps=24,
+    )
+    prompt = workflow["prompt"]
+
+    assert prompt["900"]["class_type"] == "LoadImage"
+    assert prompt["900"]["inputs"]["image"] == "avatar.png"
+    assert prompt["901"]["class_type"] == "LoadAudio"
+    assert prompt["901"]["inputs"]["audio"] == "voice.wav"
+    assert prompt["319"]["inputs"]["value"] == "natural talking avatar"
+    assert prompt["330"]["inputs"]["value"] == 768
+    assert prompt["324"]["inputs"]["value"] == 768
+    assert prompt["302"]["inputs"]["width"] == 384
+    assert prompt["302"]["inputs"]["height"] == 384
+    assert prompt["302"]["inputs"]["length"] == 81
+    assert prompt["307"]["inputs"]["frame_rate"] == 24
+    assert prompt["312"]["inputs"]["fps"] == 24
+    assert prompt["297"]["inputs"]["scale_method"] == "lanczos"
+    assert "resize_type.upscale_method" not in prompt["297"]["inputs"]
+    assert prompt["328"]["inputs"]["audio"] == ["901", 0]
+    assert "332" not in prompt
+    assert "ComfyMathExpression" not in {node["class_type"] for node in prompt.values()}
+    assert prompt["328"]["class_type"] == "LTXVAudioVAEEncode"
+    assert prompt["312"]["class_type"] == "CreateVideo"
+    assert prompt["999"]["class_type"] == "SaveVideo"
+    assert prompt["999"]["inputs"]["filename_prefix"] == "test_ltx"
+
+
+def test_ltx_frame_count_aligns_to_video_vae_stride(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data", final_video_backend="ltx_ia2v")
+    client = ComfyClient(settings)
+
+    frame_count = client.ltx_frame_count(duration=3.2, fps=24)
+
+    assert frame_count == 81
+    assert (frame_count - 1) % 8 == 0
+    assert frame_count >= 3.2 * 24
+
+
+def test_ltx_fast_profile_skips_quality_lora(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data", final_video_backend="ltx_ia2v", ltx_profile="fast")
+    workflow = ComfyClient(settings)._ltx_ia2v_workflow(
+        image_name="avatar.png",
+        audio_name="voice.wav",
+        prompt="natural talking avatar",
+        video_prefix="test_ltx",
+        duration=1.0,
+        seed=123,
+        width=768,
+        height=768,
+        fps=24,
+    )
+    prompt = workflow["prompt"]
+
+    assert prompt["317"]["inputs"]["ckpt_name"] == settings.ltx_fast_checkpoint
+    assert "293" not in prompt
+    assert prompt["290"]["inputs"]["model"] == ["317", 0]
+    assert prompt["315"]["inputs"]["model"] == ["317", 0]
+
+
+def test_ltx_output_size_is_square_from_shorter_config_side(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data", ltx_width=1280, ltx_height=720)
+
+    assert VideoGenerationModule(settings).ltx_output_size() == 720

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     output_size: int = 320
     resolution_min: int = 120
     resolution_max: int = 512
+    final_video_backend: Literal["ltx_ia2v", "musetalk"] = "ltx_ia2v"
 
     llm_base_url: str = "http://127.0.0.1:1234/v1"
     llm_model: str = ""
@@ -96,6 +97,19 @@ class Settings(BaseSettings):
     wan_5b_shift: float = 8.0
     wan_5b_sampler: str = "uni_pc"
     wan_5b_scheduler: str = "simple"
+
+    ltx_profile: Literal["quality", "fast"] = "quality"
+    ltx_width: int = 768
+    ltx_height: int = 768
+    ltx_fps: int = 24
+    ltx_checkpoint: str = "ltx-2.3-22b-dev-fp8.safetensors"
+    ltx_fast_checkpoint: str = "ltx-2.3-22b-distilled-fp8.safetensors"
+    ltx_text_encoder: str = "gemma_3_12B_it_fp4_mixed.safetensors"
+    ltx_lora: str = "ltx-2.3-22b-distilled-lora-384-1.1.safetensors"
+    ltx_lora_fallback: str = "ltx-2.3-22b-distilled-lora-384.safetensors"
+    ltx_lora_strength: float = 0.5
+    ltx_upscale_model: str = "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+    ltx_negative_prompt: str = "zoom in, zooming in, camera push-in, punch-in, face close-up, cropped face, head cropped, extreme close-up, static portrait, frozen frame, motionless, still image, pc game, console game, video game, cartoon, childish, ugly"
 
     musetalk_root: Path = Path("engines/musetalk")
     musetalk_python: str = "python"

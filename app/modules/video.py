@@ -91,3 +91,36 @@ class VideoGenerationModule:
             await asyncio.to_thread(self.media.save_square_avatar, avatar_path, lip_sync_input, resolution)
         return BaseVideoResult(base_path=base_path, lip_sync_input_path=lip_sync_input, fps=output_fps)
 
+    async def generate_ltx_ia2v_video(
+        self,
+        avatar_path: Path,
+        audio_path: Path,
+        prompt: str,
+        audio_duration: float,
+        run_id: str,
+        run_dir: Path,
+        run_state: RunState | None = None,
+    ) -> Path:
+        if self.services:
+            await self.services.ensure("comfyui")
+        output_size = self.ltx_output_size()
+        return await self.comfy.generate_ltx_ia2v(
+            image_path=avatar_path,
+            audio_path=audio_path,
+            prompt=prompt,
+            audio_duration=audio_duration,
+            run_id=run_id,
+            run_dir=run_dir,
+            run_state=run_state,
+            width=output_size,
+            height=output_size,
+            fps=self.settings.ltx_fps,
+        )
+
+    def ltx_output_size(self) -> int:
+        width = int(self.settings.ltx_width)
+        height = int(self.settings.ltx_height)
+        size = min(width, height)
+        if size % 2:
+            size -= 1
+        return max(256, size)

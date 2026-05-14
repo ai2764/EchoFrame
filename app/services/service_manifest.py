@@ -28,7 +28,7 @@ def service_definitions(settings: Settings) -> list[ServiceDefinition]:
         if settings.tts_backend == "http"
         else "Native CosyVoice worker. Requires a prepared CosyVoice Python environment."
     )
-    return [
+    services = [
         ServiceDefinition(
             name="lm_studio",
             label="LM Studio",
@@ -66,24 +66,17 @@ def service_definitions(settings: Settings) -> list[ServiceDefinition]:
         ServiceDefinition(
             name="comfyui",
             label="ComfyUI",
-            kind="image-to-video",
+            kind="image/audio-to-video" if settings.final_video_backend == "ltx_ia2v" else "image-to-video",
             default=settings.comfy_url,
-            required_for="wan_loop and wan modes",
+            required_for="final LTX IA2V video" if settings.final_video_backend == "ltx_ia2v" else "wan_loop and wan modes",
             health="GET /system_stats",
             config_keys=["COMFY_URL", "COMFY_ROOT", "COMFY_BASE_DIR", "COMFY_MODELS_DIR"],
-            repo_note="Run ComfyUI yourself with the required Wan2.2 workflow nodes and models.",
+            repo_note=(
+                "Run ComfyUI yourself with the required LTX IA2V workflow nodes and models."
+                if settings.final_video_backend == "ltx_ia2v"
+                else "Run ComfyUI yourself with the required Wan2.2 workflow nodes and models."
+            ),
             portable_note="Portable package owns the ComfyUI runtime; first run downloads configured models.",
-        ),
-        ServiceDefinition(
-            name="musetalk",
-            label="MuseTalk",
-            kind="lip-sync",
-            default="on-demand process",
-            required_for="all final talking-head videos",
-            health="local model files and runner checks",
-            config_keys=["MUSETALK_ROOT", "MUSETALK_PYTHON", "MUSETALK_FFMPEG_DIR"],
-            repo_note="Provide an existing MuseTalk checkout/environment in config.",
-            portable_note="Portable package owns the MuseTalk environment; first run downloads configured models.",
         ),
         ServiceDefinition(
             name="ffmpeg",
@@ -108,6 +101,22 @@ def service_definitions(settings: Settings) -> list[ServiceDefinition]:
             portable_note="Portable first run checks driver/GPU availability before model downloads.",
         ),
     ]
+    if settings.final_video_backend == "musetalk":
+        services.insert(
+            3,
+            ServiceDefinition(
+                name="musetalk",
+                label="MuseTalk",
+                kind="lip-sync",
+                default="on-demand process",
+                required_for="all final talking-head videos",
+                health="local model files and runner checks",
+                config_keys=["MUSETALK_ROOT", "MUSETALK_PYTHON", "MUSETALK_FFMPEG_DIR"],
+                repo_note="Provide an existing MuseTalk checkout/environment in config.",
+                portable_note="Portable package owns the MuseTalk environment; first run downloads configured models.",
+            ),
+        )
+    return services
 
 
 def service_manifest(settings: Settings) -> dict:

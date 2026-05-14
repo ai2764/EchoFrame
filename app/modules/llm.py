@@ -21,10 +21,8 @@ class LLMModule:
         return {
             "reply": reply,
             "cosyvoice_instruct": "\u5e73\u7a33\u3001\u81ea\u7136\u3001\u6e05\u6670",
-            "wan_prompt": (
-                "Preserve the same identity as the reference image, front-facing bust shot, "
-                "subtle blinking, slight nodding, small shoulder movement, steady camera, "
-                "clean studio lighting, natural neutral mouth before lip-sync."
-            ),
+            "wan_prompt": self.client.default_video_prompt(),
         }
 
+    def video_prompt_for_reply(self, prompt: str, spoken_text: str) -> str:
+        return self.client.video_prompt_for_reply(prompt, spoken_text)

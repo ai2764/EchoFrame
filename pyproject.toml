@@ -11,6 +11,7 @@ dependencies = [
     "python-multipart",
     "Pillow",
     "huggingface_hub",
+    "opencc-python-reimplemented",
 ]
 
 [tool.pytest.ini_options]

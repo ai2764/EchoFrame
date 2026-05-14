@@ -1,3 +1,4 @@
+import math
 import random
 import shutil
 import time
@@ -22,6 +23,45 @@ class ComfyClient:
             return False, f"HTTP {r.status_code}"
         except Exception as exc:
             return False, str(exc)
+
+    @staticmethod
+    def ltx_frame_count(duration: float, fps: int) -> int:
+        raw_frames = max(9, int(math.ceil(max(0.25, duration) * fps)) + 1)
+        remainder = (raw_frames - 1) % 8
+        if remainder:
+            raw_frames += 8 - remainder
+        return raw_frames
+
+    def _ltx_checkpoint_name(self) -> str:
+        if self.settings.ltx_profile == "fast":
+            return self.settings.ltx_fast_checkpoint
+        return self.settings.ltx_checkpoint
+
+    def _ltx_lora_name(self) -> str:
+        if self.settings.ltx_profile != "quality" or self.settings.ltx_lora_strength <= 0:
+            return ""
+        candidates = []
+        for name in (self.settings.ltx_lora, self.settings.ltx_lora_fallback):
+            name = str(name).strip()
+            if name and name not in candidates:
+                candidates.append(name)
+        models_dir = self._comfy_models_dir()
+        for name in candidates:
+            if (models_dir / "loras" / name).exists():
+                return name
+        return candidates[0] if candidates else ""
+
+    def _comfy_models_dir(self) -> Path:
+        if self.settings.comfy_models_dir:
+            return self.settings.comfy_models_dir
+        if self.settings.comfy_base_dir:
+            return self.settings.comfy_base_dir / "models"
+        input_parent = self.settings.comfy_input_dir.parent
+        if input_parent.name.lower() == "input":
+            input_parent = input_parent.parent
+        if (input_parent / "models").exists():
+            return input_parent / "models"
+        return self.settings.comfy_root / "models"
 
     async def generate_wan_base(
         self,
@@ -67,6 +107,62 @@ class ComfyClient:
             if not output:
                 raise RuntimeError("ComfyUI completed but no video output was found")
             dst = run_dir / "wan_raw.mp4"
+            shutil.copy2(output, dst)
+            return dst
+        finally:
+            if self.settings.comfy_unload_after_wan:
+                await self.free_memory()
+
+    async def generate_ltx_ia2v(
+        self,
+        image_path: Path,
+        audio_path: Path,
+        prompt: str,
+        audio_duration: float,
+        run_id: str,
+        run_dir: Path,
+        run_state: RunState | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        fps: int | None = None,
+    ) -> Path:
+        if run_state:
+            run_state.check()
+        self.settings.comfy_input_dir.mkdir(parents=True, exist_ok=True)
+        image_name = f"{run_id}_avatar.png"
+        audio_name = f"{run_id}_voice{audio_path.suffix or '.wav'}"
+        shutil.copy2(image_path, self.settings.comfy_input_dir / image_name)
+        shutil.copy2(audio_path, self.settings.comfy_input_dir / audio_name)
+        prefix = f"{run_id}_ltx_ia2v"
+        workflow = self._ltx_ia2v_workflow(
+            image_name=image_name,
+            audio_name=audio_name,
+            prompt=prompt,
+            video_prefix=prefix,
+            duration=audio_duration,
+            seed=random.randint(1, 999999999),
+            width=width,
+            height=height,
+            fps=fps,
+        )
+        try:
+            if run_state:
+                run_state.check()
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                r = await client.post(self.settings.comfy_url.rstrip("/") + "/prompt", json=workflow)
+            if r.status_code != 200:
+                raise RuntimeError(f"ComfyUI HTTP {r.status_code}: {r.text[:500]}")
+            body = r.json()
+            prompt_id = body.get("prompt_id")
+            if not prompt_id:
+                raise RuntimeError(f"ComfyUI rejected workflow: {body}")
+            if run_state:
+                run_state.set_comfy_prompt(self.settings.comfy_url, prompt_id)
+            outputs = await self._poll(prompt_id, run_state)
+            output = self._find_video(outputs)
+            if not output:
+                raise RuntimeError("ComfyUI completed but no LTX video output was found")
+            dst = run_dir / "ltx_raw.mp4"
             shutil.copy2(output, dst)
             return dst
         finally:
@@ -365,3 +461,165 @@ class ComfyClient:
                 },
             }
         }
+
+    def _ltx_ia2v_workflow(
+        self,
+        image_name: str,
+        audio_name: str,
+        prompt: str,
+        video_prefix: str,
+        duration: float,
+        seed: int,
+        width: int | None = None,
+        height: int | None = None,
+        fps: int | None = None,
+    ) -> dict:
+        width = int(width or self.settings.ltx_width)
+        height = int(height or self.settings.ltx_height)
+        fps = int(fps or self.settings.ltx_fps)
+        duration = max(0.25, float(duration))
+        latent_width = max(64, width // 2)
+        latent_height = max(64, height // 2)
+        frame_count = self.ltx_frame_count(duration, fps)
+        ckpt = self._ltx_checkpoint_name()
+        lora_name = self._ltx_lora_name()
+        model_ref = ["293", 0] if lora_name else ["317", 0]
+        workflow = {
+            "prompt": {
+                "900": {"class_type": "LoadImage", "inputs": {"image": image_name}},
+                "901": {"class_type": "LoadAudio", "inputs": {"audio": audio_name}},
+                "285": {"class_type": "RandomNoise", "inputs": {"noise_seed": 42}},
+                "286": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
+                "287": {
+                    "class_type": "LTXVConcatAVLatent",
+                    "inputs": {"video_latent": ["296", 0], "audio_latent": ["309", 1]},
+                },
+                "288": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler_cfg_pp"}},
+                "289": {"class_type": "ManualSigmas", "inputs": {"sigmas": "0.85, 0.7250, 0.4219, 0.0"}},
+                "290": {
+                    "class_type": "CFGGuider",
+                    "inputs": {"model": model_ref, "positive": ["292", 0], "negative": ["292", 1], "cfg": 1},
+                },
+                "291": {
+                    "class_type": "SamplerCustomAdvanced",
+                    "inputs": {
+                        "noise": ["286", 0],
+                        "guider": ["315", 0],
+                        "sampler": ["298", 0],
+                        "sigmas": ["308", 0],
+                        "latent_image": ["326", 0],
+                    },
+                },
+                "292": {
+                    "class_type": "LTXVCropGuides",
+                    "inputs": {"positive": ["307", 0], "negative": ["307", 1], "latent": ["309", 0]},
+                },
+                "294": {"class_type": "ResizeImagesByLongerEdge", "inputs": {"images": ["297", 0], "longer_edge": 1536}},
+                "295": {
+                    "class_type": "LTXVLatentUpsampler",
+                    "inputs": {"samples": ["309", 0], "upscale_model": ["313", 0], "vae": ["317", 2]},
+                },
+                "296": {
+                    "class_type": "LTXVImgToVideoInplace",
+                    "inputs": {"vae": ["317", 2], "image": ["334", 0], "latent": ["295", 0], "bypass": ["305", 0], "strength": 1},
+                },
+                "297": {
+                    "class_type": "ResizeImageMaskNode",
+                    "inputs": {
+                        "input": ["900", 0],
+                        "resize_type": "scale dimensions",
+                        "resize_type.width": ["330", 0],
+                        "resize_type.height": ["324", 0],
+                        "resize_type.crop": "center",
+                        "scale_method": "lanczos",
+                    },
+                },
+                "298": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler_ancestral_cfg_pp"}},
+                "302": {
+                    "class_type": "EmptyLTXVLatentVideo",
+                    "inputs": {"width": latent_width, "height": latent_height, "length": frame_count, "batch_size": 1},
+                },
+                "303": {"class_type": "LTXVAudioVAEDecode", "inputs": {"samples": ["311", 1], "audio_vae": ["335", 0]}},
+                "305": {"class_type": "PrimitiveBoolean", "inputs": {"value": False}},
+                "306": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["318", 0], "text": ["319", 0]}},
+                "307": {
+                    "class_type": "LTXVConditioning",
+                    "inputs": {"positive": ["306", 0], "negative": ["314", 0], "frame_rate": fps},
+                },
+                "308": {
+                    "class_type": "ManualSigmas",
+                    "inputs": {"sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"},
+                },
+                "309": {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["291", 0]}},
+                "310": {
+                    "class_type": "SamplerCustomAdvanced",
+                    "inputs": {
+                        "noise": ["285", 0],
+                        "guider": ["290", 0],
+                        "sampler": ["288", 0],
+                        "sigmas": ["289", 0],
+                        "latent_image": ["287", 0],
+                    },
+                },
+                "311": {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["310", 0]}},
+                "312": {"class_type": "CreateVideo", "inputs": {"images": ["316", 0], "audio": ["303", 0], "fps": fps}},
+                "313": {"class_type": "LatentUpscaleModelLoader", "inputs": {"model_name": self.settings.ltx_upscale_model}},
+                "314": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["318", 0], "text": self.settings.ltx_negative_prompt}},
+                "315": {
+                    "class_type": "CFGGuider",
+                    "inputs": {"model": model_ref, "positive": ["307", 0], "negative": ["307", 1], "cfg": 1},
+                },
+                "316": {
+                    "class_type": "VAEDecodeTiled",
+                    "inputs": {
+                        "samples": ["311", 0],
+                        "vae": ["317", 2],
+                        "tile_size": 768,
+                        "overlap": 64,
+                        "temporal_size": 4096,
+                        "temporal_overlap": 4,
+                    },
+                },
+                "317": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
+                "318": {
+                    "class_type": "LTXAVTextEncoderLoader",
+                    "inputs": {"text_encoder": self.settings.ltx_text_encoder, "ckpt_name": ckpt, "device": "default"},
+                },
+                "319": {"class_type": "PrimitiveStringMultiline", "inputs": {"value": prompt}},
+                "324": {"class_type": "PrimitiveInt", "inputs": {"value": height}},
+                "325": {
+                    "class_type": "LTXVImgToVideoInplace",
+                    "inputs": {
+                        "vae": ["317", 2],
+                        "image": ["334", 0],
+                        "latent": ["302", 0],
+                        "bypass": ["305", 0],
+                        "strength": 0.7,
+                    },
+                },
+                "326": {
+                    "class_type": "LTXVConcatAVLatent",
+                    "inputs": {"video_latent": ["325", 0], "audio_latent": ["327", 0]},
+                },
+                "327": {"class_type": "SetLatentNoiseMask", "inputs": {"samples": ["328", 0], "mask": ["333", 0]}},
+                "328": {"class_type": "LTXVAudioVAEEncode", "inputs": {"audio": ["901", 0], "audio_vae": ["335", 0]}},
+                "330": {"class_type": "PrimitiveInt", "inputs": {"value": width}},
+                "333": {"class_type": "SolidMask", "inputs": {"value": 0, "width": ["330", 0], "height": ["324", 0]}},
+                "334": {"class_type": "LTXVPreprocess", "inputs": {"image": ["294", 0], "img_compression": 18}},
+                "335": {"class_type": "LTXVAudioVAELoader", "inputs": {"ckpt_name": ckpt}},
+                "999": {
+                    "class_type": "SaveVideo",
+                    "inputs": {"video": ["312", 0], "filename_prefix": video_prefix, "format": "mp4", "codec": "h264"},
+                },
+            }
+        }
+        if lora_name:
+            workflow["prompt"]["293"] = {
+                "class_type": "LoraLoaderModelOnly",
+                "inputs": {
+                    "model": ["317", 0],
+                    "lora_name": lora_name,
+                    "strength_model": self.settings.ltx_lora_strength,
+                },
+            }
+        return workflow

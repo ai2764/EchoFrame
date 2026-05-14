@@ -31,7 +31,7 @@ class ServiceManager:
     async def statuses(self) -> dict[str, EngineStatus]:
         model_checks = self.models.check_all()
         result = {}
-        for name in ("lm_studio", "cosyvoice", "comfyui", "musetalk", "ffmpeg", "gpu"):
+        for name in self._visible_services():
             result[name] = await self._status(name, model_checks)
         return result
 
@@ -144,6 +144,11 @@ class ServiceManager:
     def _validate_name(self, name: str) -> None:
         if name not in SERVICE_NAMES:
             raise HTTPException(status_code=404, detail="unknown service")
+
+    def _visible_services(self) -> tuple[str, ...]:
+        if self.settings.final_video_backend == "ltx_ia2v":
+            return ("lm_studio", "cosyvoice", "comfyui", "ffmpeg", "gpu")
+        return ("lm_studio", "cosyvoice", "comfyui", "musetalk", "ffmpeg", "gpu")
 
     async def _health(self, name: str) -> tuple[bool, str]:
         if name == "lm_studio":

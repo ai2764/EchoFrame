@@ -9,7 +9,16 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import Settings, get_settings
-from app.schemas import ChatRequest, ChatResponse, EngineActionResponse, EngineStatus, GpuStatus, HealthResponse, ServiceStatus
+from app.schemas import (
+    ChatRequest,
+    ChatResponse,
+    EngineActionResponse,
+    EngineStatus,
+    GpuStatus,
+    HealthResponse,
+    RegenerateRequest,
+    ServiceStatus,
+)
 from app.services.comfy import ComfyClient
 from app.services.gpu import gpu_status as get_gpu_status, gpu_summary
 from app.services.llm import LLMClient
@@ -100,6 +109,34 @@ async def chat_stream(req: ChatRequest, pipeline: TalkingAvatarPipeline = Depend
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 
+@app.post("/api/regenerate-stream")
+async def regenerate_stream(req: RegenerateRequest, pipeline: TalkingAvatarPipeline = Depends(get_pipeline)):
+    async def stream():
+        state = run_controller.start(asyncio.current_task())
+        try:
+            async for event in pipeline.regenerate_events(req, state):
+                if event.get("type") == "stage":
+                    state.record_stage(event)
+                elif event.get("type") == "result":
+                    state.record_result(event.get("data") or {})
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except WorkflowCancelled as exc:
+            state.record_cancelled(str(exc))
+            event = {"type": "cancelled", "message": str(exc)}
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except asyncio.CancelledError:
+            state.record_cancelled("Workflow cancelled")
+            raise
+        except Exception as exc:
+            state.record_error(str(exc))
+            event = {"type": "error", "message": str(exc)}
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        finally:
+            run_controller.finish(state)
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
 @app.post("/api/stop")
 async def stop_workflow(s: Settings = Depends(get_settings)):
     state = run_controller.cancel_active()
@@ -154,7 +191,10 @@ async def health(s: Settings = Depends(get_settings)):
     llm_ok, llm_detail = await LLMClient(s).health()
     tts_ok, tts_detail = await TTSClient(s).health()
     comfy_ok, comfy_detail = await ComfyClient(s).health()
-    muse_ok, muse_detail = MuseTalkClient(s).health()
+    if s.final_video_backend == "musetalk":
+        muse_ok, muse_detail = MuseTalkClient(s).health()
+    else:
+        muse_ok, muse_detail = True, "not required for LTX IA2V"
     ffmpeg_ok, ffmpeg_detail = _ffmpeg_health(s)
     gpu_detail = gpu_summary()
     return HealthResponse(
