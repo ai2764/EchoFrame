@@ -9,7 +9,13 @@ from app.services.pipeline import TalkingAvatarPipeline
 
 
 def test_regenerate_video_reuses_previous_audio_and_updates_prompt(tmp_path):
-    settings = Settings(data_dir=tmp_path / "data", final_video_backend="musetalk")
+    settings = Settings(
+        data_dir=tmp_path / "data",
+        final_video_backend="musetalk",
+        ltx_unload_llm_before_video=False,
+        ltx_unload_tts_before_video=False,
+        ltx_reload_tts_after_video=False,
+    )
     avatar_dir = settings.abs_data_dir / "avatars" / "av_test"
     avatar_dir.mkdir(parents=True)
     (avatar_dir / "source.png").write_bytes(b"avatar")
@@ -74,6 +80,82 @@ def test_regenerate_video_reuses_previous_audio_and_updates_prompt(tmp_path):
     assert result["audio_duration"] == 1.0
     assert meta["final_video_backend"] == "ltx_ia2v"
     assert result["video_url"].endswith("/final.mp4")
+
+
+def test_regenerate_video_uses_ltx_native_audio_without_previous_audio_file(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path / "data",
+        final_video_backend="musetalk",
+        ltx_unload_llm_before_video=False,
+        ltx_unload_tts_before_video=False,
+        ltx_reload_tts_after_video=False,
+    )
+    avatar_dir = settings.abs_data_dir / "avatars" / "av_test"
+    avatar_dir.mkdir(parents=True)
+    (avatar_dir / "source.png").write_bytes(b"avatar")
+    previous_dir = settings.abs_data_dir / "runs" / "run_old"
+    previous_dir.mkdir(parents=True)
+    (previous_dir / "reply.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run_old",
+                "avatar_id": "av_test",
+                "message": "hello",
+                "final_video_backend": "ltx_native_audio",
+                "mode": "fast",
+                "voice_id": "voice_a",
+                "resolution": 512,
+                "wan_render_resolution": 512,
+                "reply": "hello there",
+                "cosyvoice_instruct": "calm",
+                "tts_instruct_sent": "LTX native audio (no external TTS)",
+                "wan_prompt": "front-facing bust shot",
+                "audio_duration": 3.0,
+                "ltx_audio_mode": "native",
+                "ltx_generated_audio": "voice.m4a",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    pipeline = TalkingAvatarPipeline(settings)
+    tts_called = False
+    native_called = False
+
+    async def synthesize(*args, **kwargs):
+        nonlocal tts_called
+        tts_called = True
+
+    async def generate_native(**kwargs):
+        nonlocal native_called
+        native_called = True
+        assert kwargs["duration"] == 3.0
+        assert kwargs["resolution"] == 512
+        out = kwargs["run_dir"] / "ltx_native_audio.mp4"
+        out.write_bytes(b"video")
+        return out
+
+    pipeline.tts.synthesize = synthesize
+    pipeline.video.generate_ltx_native_audio_video = generate_native
+    pipeline.media.extract_audio = lambda video, audio: audio.write_bytes(b"generated audio")
+    pipeline.media.duration = lambda _: 3.1
+
+    async def collect():
+        return [
+            event
+            async for event in pipeline.regenerate_events(RegenerateRequest(run_id="run_old", stage="video"))
+        ]
+
+    events = asyncio.run(collect())
+    result = next(event["data"] for event in events if event["type"] == "result")
+    meta = json.loads((settings.abs_data_dir / "runs" / result["run_id"] / "reply.json").read_text(encoding="utf-8"))
+
+    assert not tts_called
+    assert native_called
+    assert result["final_video_backend"] == "ltx_native_audio"
+    assert result["audio_url"].endswith("/voice.m4a")
+    assert result["video_url"].endswith("/final.mp4")
+    assert meta["ltx_audio_mode"] == "native"
 
 
 def test_regenerate_video_uses_previous_musetalk_backend_when_current_backend_is_ltx(tmp_path):

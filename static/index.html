@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>EchoFrame</title>
-  <link rel="stylesheet" href="/static/styles.css?v=9">
+  <link rel="stylesheet" href="/static/styles.css?v=12">
 </head>
 <body>
   <main class="shell">
@@ -67,8 +67,42 @@
         <div class="toolbar">
           <div class="workflowStack">
             <div class="workflowGroup" role="group" aria-label="Workflow" data-i18n-aria="workflow">
-              <button class="workflow active" data-backend="ltx_ia2v" type="button" data-i18n="workflowLtx">LTX IA2V</button>
-              <button class="workflow" data-backend="musetalk" type="button" data-i18n="workflowWanMuseTalk">Wan + MuseTalk</button>
+              <button class="workflow workflowCard active" data-backend="ltx_ia2v" type="button">
+                <span class="workflowTitle" data-i18n="workflowLtx">LTX IA2V</span>
+                <span class="workflowFlow" aria-hidden="true">
+                  <span class="flowStep" data-i18n="flowText">Text</span>
+                  <span class="flowLink"></span>
+                  <span class="flowStep" data-i18n="flowTts">TTS</span>
+                  <span class="flowLink"></span>
+                  <span class="flowStep" data-i18n="flowLtx">LTX</span>
+                  <span class="flowLink"></span>
+                  <span class="flowStep" data-i18n="flowMp4">MP4</span>
+                </span>
+              </button>
+              <button class="workflow workflowCard" data-backend="ltx_native_audio" type="button">
+                <span class="workflowTitle" data-i18n="workflowLtxNative">LTX Native A/V</span>
+                <span class="workflowFlow" aria-hidden="true">
+                  <span class="flowStep" data-i18n="flowText">Text</span>
+                  <span class="flowLink"></span>
+                  <span class="flowStep" data-i18n="flowLtxAv">LTX A/V</span>
+                  <span class="flowLink"></span>
+                  <span class="flowStep" data-i18n="flowMp4">MP4</span>
+                </span>
+              </button>
+              <button class="workflow workflowCard" data-backend="musetalk" type="button">
+                <span class="workflowTitle" data-i18n="workflowWanMuseTalk">Wan + MuseTalk</span>
+                <span class="workflowFlow" aria-hidden="true">
+                  <span class="flowStep" data-i18n="flowText">Text</span>
+                  <span class="flowLink"></span>
+                  <span class="flowStep" data-i18n="flowTts">TTS</span>
+                  <span class="flowLink"></span>
+                  <span class="flowStep" data-i18n="flowWan">Wan</span>
+                  <span class="flowLink"></span>
+                  <span class="flowStep" data-i18n="flowMuseTalk">MuseTalk</span>
+                  <span class="flowLink"></span>
+                  <span class="flowStep" data-i18n="flowMp4">MP4</span>
+                </span>
+              </button>
             </div>
             <div class="modeGroup" id="wanModeGroup" role="group" aria-label="Mode" data-i18n-aria="mode" hidden>
               <button class="mode active" data-mode="fast" type="button" data-i18n="modeFast">Still + MuseTalk</button>
@@ -81,6 +115,7 @@
               <button class="lang" data-lang="zh" type="button">中文</button>
               <button class="lang" data-lang="en" type="button">EN</button>
             </div>
+            <button id="prepareWorkflow" type="button" data-i18n="prepare">Prepare</button>
             <button id="refreshAllStatus" type="button" data-i18n="refresh">Refresh</button>
           </div>
         </div>
@@ -88,11 +123,11 @@
         <div class="settingsRow">
           <label class="field resolutionField">
             <span><span data-i18n="resolution">Resolution</span> <output id="resolutionValue">320</output></span>
-            <input id="resolutionRange" type="range" min="120" max="512" step="8" value="320">
+            <input id="resolutionRange" type="range" min="120" max="1028" step="8" value="320">
           </label>
           <label class="field resolutionNumber">
             <span data-i18n="size">Size</span>
-            <input id="resolutionNumber" type="number" min="120" max="512" step="8" value="320">
+            <input id="resolutionNumber" type="number" min="120" max="1028" step="8" value="320">
           </label>
         </div>
 
@@ -160,6 +195,6 @@
       </section>
     </section>
   </main>
-  <script src="/static/app.js?v=28"></script>
+  <script src="/static/app.js?v=35"></script>
 </body>
 </html>

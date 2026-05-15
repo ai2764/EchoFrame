@@ -26,3 +26,6 @@ class LLMModule:
 
     def video_prompt_for_reply(self, prompt: str, spoken_text: str) -> str:
         return self.client.video_prompt_for_reply(prompt, spoken_text)
+
+    def native_audio_prompt_for_reply(self, prompt: str, spoken_text: str) -> str:
+        return self.client.native_audio_prompt_for_reply(prompt, spoken_text)

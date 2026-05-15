@@ -19,6 +19,10 @@ VIDEO_MOTION_ANCHOR = (
     "shifts; locked-off camera, stable framing, and consistent head size throughout. Looks like live "
     "video, not a static portrait or frozen frame."
 )
+VIDEO_NO_TEXT_ANCHOR = (
+    "Clean video frame with no subtitles, no captions, no closed captions, no karaoke lyrics, "
+    "no on-screen text, no title cards, no lower thirds, no logos, and no watermark."
+)
 
 
 class LLMClient:
@@ -139,6 +143,12 @@ class LLMClient:
         except Exception:
             pass
 
+    async def unload_all_models(self) -> int:
+        loaded = await self.loaded_instances()
+        for instance_id in loaded:
+            await self.unload_model(instance_id)
+        return len(loaded)
+
     def _native_base_url(self) -> str:
         base = self.settings.llm_base_url.rstrip("/")
         for suffix in ("/v1", "/api/v1"):
@@ -184,6 +194,8 @@ Rules:
   chin, neck, and shoulders visible. Use a locked-off camera and consistent head size.
 - wan_prompt should say the result looks like live video, not a static portrait or
   frozen frame.
+- wan_prompt must explicitly avoid subtitles, captions, on-screen text, title cards,
+  lower thirds, logos, and watermarks.
 - Avoid words such as zoom in, camera push-in, cropped face, extreme close-up,
   wide open mouth, exaggerated speaking, yelling, distorted face.
 """.strip()
@@ -218,7 +230,7 @@ Rules:
         }
 
     def default_video_prompt(self) -> str:
-        return f"{VIDEO_IDENTITY_ANCHOR} {VIDEO_MOTION_ANCHOR}"
+        return f"{VIDEO_IDENTITY_ANCHOR} {VIDEO_MOTION_ANCHOR} {VIDEO_NO_TEXT_ANCHOR}"
 
     def video_prompt_for_reply(self, prompt: str, spoken_text: str) -> str:
         prompt = self._sanitize_wan_prompt(prompt)
@@ -243,6 +255,17 @@ Rules:
             "and the supplied voice audio."
         )
         return re.sub(r"\s+", " ", f"{prompt} {spoken_anchor}").strip()
+
+    def native_audio_prompt_for_reply(self, prompt: str, spoken_text: str) -> str:
+        prompt = self.video_prompt_for_reply(prompt, spoken_text)
+        prompt = re.sub(r"supplied voice audio", "generated speech audio", prompt, flags=re.I)
+        native_anchor = (
+            " The video includes generated speech audio in the same language as the spoken line. "
+            "The generated audio contains only that exact line, with no extra narration, music, "
+            "or sound effects. The video has no subtitles, no captions, no text overlay, and no "
+            "on-screen words."
+        )
+        return re.sub(r"\s+", " ", f"{prompt} {native_anchor}").strip()
 
     def _sanitize_wan_prompt(self, prompt: str) -> str:
         banned = [
@@ -272,6 +295,9 @@ Rules:
             clean += " " + VIDEO_IDENTITY_ANCHOR
         if "visible but realistic motion" not in clean_lower or "locked-off camera" not in clean_lower:
             clean += " " + VIDEO_MOTION_ANCHOR
+        clean_lower = clean.lower()
+        if "no subtitles" not in clean_lower and "no captions" not in clean_lower:
+            clean += " " + VIDEO_NO_TEXT_ANCHOR
         return re.sub(r"\s+", " ", clean).strip()
 
     def _fallback(self, message: str) -> dict:

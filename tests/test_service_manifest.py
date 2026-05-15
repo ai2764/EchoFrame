@@ -69,6 +69,7 @@ def test_ltx_manifest_accepts_fallback_lora(tmp_path):
         data_dir=tmp_path / "data",
         comfy_models_dir=tmp_path / "models",
         final_video_backend="ltx_ia2v",
+        ltx_model_format="checkpoint",
     )
     for folder, name in (
         ("checkpoints", settings.ltx_checkpoint),
@@ -92,6 +93,7 @@ def test_ltx_fast_manifest_does_not_require_lora(tmp_path):
         comfy_models_dir=tmp_path / "models",
         final_video_backend="ltx_ia2v",
         ltx_profile="fast",
+        ltx_model_format="checkpoint",
     )
 
     check = ModelManifest(settings).check_ltx_ia2v()
@@ -99,6 +101,22 @@ def test_ltx_fast_manifest_does_not_require_lora(tmp_path):
     assert not check.ok
     assert f"checkpoints/{settings.ltx_fast_checkpoint}" in check.detail
     assert "loras/" not in check.detail
+
+
+def test_ltx_gguf_manifest_requires_split_files(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path / "data",
+        comfy_models_dir=tmp_path / "models",
+        final_video_backend="ltx_ia2v",
+        ltx_model_format="gguf",
+    )
+
+    check = ModelManifest(settings).check_ltx_ia2v()
+
+    assert not check.ok
+    assert f"unet/{settings.ltx_gguf_model}" in check.detail
+    assert f"text_encoders/{settings.ltx_text_projection}" in check.detail
+    assert f"vae/{settings.ltx_video_vae}" in check.detail
 
 
 def test_wan_download_uses_model_local_temp_dir(tmp_path, monkeypatch):

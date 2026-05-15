@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import tempfile
 import time
@@ -29,6 +30,7 @@ class TalkingAvatarPipeline:
         self.tts = TTSModule(settings, self.services)
         self.video = VideoGenerationModule(settings, self.services)
         self.lipsync = LipSyncModule(settings, self.services)
+        self._background_tasks: set[asyncio.Task] = set()
 
     async def create_avatar(self, upload: UploadFile) -> AvatarResponse:
         suffix = Path(upload.filename or "avatar.png").suffix.lower()
@@ -89,6 +91,18 @@ class TalkingAvatarPipeline:
         if not manual_reply and not user_message:
             raise HTTPException(status_code=400, detail="message or manual reply is required")
 
+        if final_video_backend == "musetalk":
+            yield {"type": "stage", "stage": "pre_wan_comfy_release", "status": "running"}
+            await asyncio.sleep(0.01)
+            await self._release_comfy_for_musetalk(timings, "pre_wan_comfy_release", run_state)
+            yield {
+                "type": "stage",
+                "stage": "pre_wan_comfy_release",
+                "status": "done",
+                "duration": timings["pre_wan_comfy_release"],
+            }
+            await asyncio.sleep(0.01)
+
         self._check_cancel(run_state)
         start = time.perf_counter()
         yield {"type": "stage", "stage": "llm", "status": "running"}
@@ -100,39 +114,107 @@ class TalkingAvatarPipeline:
         voice_id = self._voice_id(req, plan["reply"])
         video_prompt = plan["wan_prompt"]
 
-        audio_path = out_dir / "voice.wav"
-        start = time.perf_counter()
-        yield {"type": "stage", "stage": "tts", "status": "running"}
-        await asyncio.sleep(0.01)
-        self._check_cancel(run_state)
-        tts_instruct = await self.tts.synthesize(
-            text=plan["reply"],
-            instruct=plan["cosyvoice_instruct"],
-            voice_id=voice_id,
-            output_path=audio_path,
-        )
-        timings["tts"] = round(time.perf_counter() - start, 3)
-        yield {"type": "stage", "stage": "tts", "status": "done", "duration": timings["tts"]}
-        await asyncio.sleep(0.01)
-
-        start = time.perf_counter()
-        yield {"type": "stage", "stage": "audio_probe", "status": "running"}
-        await asyncio.sleep(0.01)
-        self._check_cancel(run_state)
-        audio_duration = await asyncio.to_thread(self.media.duration, audio_path)
-        if audio_duration < 0.2:
-            raise RuntimeError("TTS audio is too short for video generation")
-        timings["audio_probe"] = round(time.perf_counter() - start, 3)
-        yield {"type": "stage", "stage": "audio_probe", "status": "done", "duration": timings["audio_probe"]}
-        await asyncio.sleep(0.01)
-
-        actual_resolution = resolution
-        if final_video_backend == "ltx_ia2v":
-            video_prompt = self.llm.video_prompt_for_reply(plan["wan_prompt"], plan["reply"])
+        native_ltx_audio = final_video_backend == "ltx_native_audio"
+        audio_path = out_dir / ("voice.m4a" if native_ltx_audio else "voice.wav")
+        if native_ltx_audio:
+            audio_duration = self._estimate_ltx_native_audio_duration(plan["reply"])
+            tts_instruct = "LTX native audio (no external TTS)"
+        else:
             start = time.perf_counter()
-            yield {"type": "stage", "stage": "ltx_ia2v", "status": "running"}
+            yield {"type": "stage", "stage": "tts", "status": "running"}
             await asyncio.sleep(0.01)
             self._check_cancel(run_state)
+            tts_instruct = await self.tts.synthesize(
+                text=plan["reply"],
+                instruct=plan["cosyvoice_instruct"],
+                voice_id=voice_id,
+                output_path=audio_path,
+            )
+            timings["tts"] = round(time.perf_counter() - start, 3)
+            yield {"type": "stage", "stage": "tts", "status": "done", "duration": timings["tts"]}
+            await asyncio.sleep(0.01)
+
+            start = time.perf_counter()
+            yield {"type": "stage", "stage": "audio_probe", "status": "running"}
+            await asyncio.sleep(0.01)
+            self._check_cancel(run_state)
+            audio_duration = await asyncio.to_thread(self.media.duration, audio_path)
+            if audio_duration < 0.2:
+                raise RuntimeError("TTS audio is too short for video generation")
+            timings["audio_probe"] = round(time.perf_counter() - start, 3)
+            yield {"type": "stage", "stage": "audio_probe", "status": "done", "duration": timings["audio_probe"]}
+            await asyncio.sleep(0.01)
+
+        actual_resolution = resolution
+        if final_video_backend == "ltx_native_audio":
+            video_prompt = self.llm.native_audio_prompt_for_reply(plan["wan_prompt"], plan["reply"])
+            self._check_cancel(run_state)
+            yield {"type": "stage", "stage": "ltx_native_audio", "status": "running"}
+            await asyncio.sleep(0.01)
+            start = time.perf_counter()
+            ltx_resolution = self.video.ltx_output_size(resolution)
+            base_path = await self.video.generate_ltx_native_audio_video(
+                avatar_path=avatar_path,
+                prompt=video_prompt,
+                duration=audio_duration,
+                run_id=run_id,
+                run_dir=out_dir,
+                resolution=resolution,
+                run_state=run_state,
+            )
+            talk_path = out_dir / "final.mp4"
+            shutil.copy2(base_path, talk_path)
+            timings["ltx_native_audio"] = round(time.perf_counter() - start, 3)
+            yield {
+                "type": "stage",
+                "stage": "ltx_native_audio",
+                "status": "done",
+                "duration": timings["ltx_native_audio"],
+            }
+            await asyncio.sleep(0.01)
+
+            start = time.perf_counter()
+            yield {"type": "stage", "stage": "native_audio_export", "status": "running"}
+            await asyncio.sleep(0.01)
+            self._check_cancel(run_state)
+            await asyncio.to_thread(self.media.extract_audio, talk_path, audio_path)
+            audio_duration = await asyncio.to_thread(self.media.duration, audio_path)
+            if audio_duration < 0.2:
+                raise RuntimeError("LTX native audio is too short for video generation")
+            timings["native_audio_export"] = round(time.perf_counter() - start, 3)
+            yield {
+                "type": "stage",
+                "stage": "native_audio_export",
+                "status": "done",
+                "duration": timings["native_audio_export"],
+            }
+            await asyncio.sleep(0.01)
+
+            actual_resolution = ltx_resolution
+            base_meta = {
+                "ltx_audio_mode": "native",
+                "ltx_generated_audio": audio_path.name,
+                "ltx_native_audio_estimated_duration": round(self._estimate_ltx_native_audio_duration(plan["reply"]), 3),
+                "ltx_width": ltx_resolution,
+                "ltx_height": ltx_resolution,
+                "ltx_fps": self.settings.ltx_fps,
+            }
+        elif final_video_backend == "ltx_ia2v":
+            video_prompt = self.llm.video_prompt_for_reply(plan["wan_prompt"], plan["reply"])
+            self._check_cancel(run_state)
+            yield {"type": "stage", "stage": "pre_ltx_vram_release", "status": "running"}
+            await asyncio.sleep(0.01)
+            await self._release_vram_for_ltx(timings, run_state)
+            yield {
+                "type": "stage",
+                "stage": "pre_ltx_vram_release",
+                "status": "done",
+                "duration": timings.get("pre_ltx_vram_release", 0.0),
+            }
+            await asyncio.sleep(0.01)
+            yield {"type": "stage", "stage": "ltx_ia2v", "status": "running"}
+            await asyncio.sleep(0.01)
+            start = time.perf_counter()
             ltx_resolution = self.video.ltx_output_size(resolution)
             base_path = await self.video.generate_ltx_ia2v_video(
                 avatar_path=avatar_path,
@@ -149,8 +231,10 @@ class TalkingAvatarPipeline:
             timings["ltx_ia2v"] = round(time.perf_counter() - start, 3)
             yield {"type": "stage", "stage": "ltx_ia2v", "status": "done", "duration": timings["ltx_ia2v"]}
             await asyncio.sleep(0.01)
+
             actual_resolution = ltx_resolution
             base_meta = {
+                "ltx_audio_mode": "external_tts",
                 "ltx_input_audio": audio_path.name,
                 "ltx_width": ltx_resolution,
                 "ltx_height": ltx_resolution,
@@ -175,6 +259,18 @@ class TalkingAvatarPipeline:
             timings["base_video"] = round(time.perf_counter() - start, 3)
             yield {"type": "stage", "stage": "base_video", "status": "done", "duration": timings["base_video"]}
             await asyncio.sleep(0.01)
+
+            if req.mode in {"wan", "wan_loop"}:
+                yield {"type": "stage", "stage": "post_wan_comfy_release", "status": "running"}
+                await asyncio.sleep(0.01)
+                await self._release_comfy_for_musetalk(timings, "post_wan_comfy_release", run_state)
+                yield {
+                    "type": "stage",
+                    "stage": "post_wan_comfy_release",
+                    "status": "done",
+                    "duration": timings["post_wan_comfy_release"],
+                }
+                await asyncio.sleep(0.01)
 
             start = time.perf_counter()
             yield {"type": "stage", "stage": "musetalk", "status": "running"}
@@ -226,7 +322,7 @@ class TalkingAvatarPipeline:
             tts_instruct_sent=tts_instruct,
             wan_prompt=video_prompt,
             audio_duration=round(audio_duration, 3),
-            timings=timings,
+            timings=dict(timings),
             audio_url=media_url(self.settings, audio_path),
             base_video_url=media_url(self.settings, base_path),
             video_url=media_url(self.settings, talk_path),
@@ -235,6 +331,8 @@ class TalkingAvatarPipeline:
             final_video_backend=final_video_backend,
         )
         yield {"type": "result", "data": response.model_dump()}
+        if final_video_backend == "ltx_ia2v":
+            self._schedule_tts_reload_after_ltx(timings, run_state)
 
     async def regenerate_events(self, req: RegenerateRequest, run_state: RunState | None = None) -> AsyncIterator[dict]:
         previous = self._load_run_meta(req.run_id)
@@ -266,6 +364,18 @@ class TalkingAvatarPipeline:
         if not plan["reply"]:
             raise HTTPException(status_code=400, detail="previous run has no reply to reuse")
 
+        if final_video_backend == "musetalk":
+            yield {"type": "stage", "stage": "pre_wan_comfy_release", "status": "running"}
+            await asyncio.sleep(0.01)
+            await self._release_comfy_for_musetalk(timings, "pre_wan_comfy_release", run_state)
+            yield {
+                "type": "stage",
+                "stage": "pre_wan_comfy_release",
+                "status": "done",
+                "duration": timings["pre_wan_comfy_release"],
+            }
+            await asyncio.sleep(0.01)
+
         self._check_cancel(run_state)
         if req.stage == "llm":
             if not user_message:
@@ -282,51 +392,124 @@ class TalkingAvatarPipeline:
             yield {"type": "stage", "stage": "llm", "status": "done", "duration": 0.0}
             await asyncio.sleep(0.01)
 
-        audio_path = out_dir / "voice.wav"
-        if req.stage in {"llm", "tts"}:
+        native_ltx_audio = final_video_backend == "ltx_native_audio"
+        audio_path = out_dir / ("voice.m4a" if native_ltx_audio else "voice.wav")
+        if native_ltx_audio:
+            previous_duration = float(previous.get("audio_duration") or 0.0)
+            if req.stage in {"llm", "tts"} or previous_duration <= 0:
+                audio_duration = self._estimate_ltx_native_audio_duration(plan["reply"])
+            else:
+                audio_duration = previous_duration
+            tts_instruct = "LTX native audio (no external TTS)"
+        else:
+            if req.stage in {"llm", "tts"}:
+                start = time.perf_counter()
+                yield {"type": "stage", "stage": "tts", "status": "running"}
+                await asyncio.sleep(0.01)
+                self._check_cancel(run_state)
+                tts_instruct = await self.tts.synthesize(
+                    text=plan["reply"],
+                    instruct=plan["cosyvoice_instruct"],
+                    voice_id=voice_id,
+                    output_path=audio_path,
+                )
+                timings["tts"] = round(time.perf_counter() - start, 3)
+                yield {"type": "stage", "stage": "tts", "status": "done", "duration": timings["tts"]}
+                await asyncio.sleep(0.01)
+            else:
+                previous_audio = self._previous_artifact(req.run_id, str(previous.get("ltx_input_audio") or "voice.wav"))
+                if not previous_audio.exists():
+                    raise HTTPException(status_code=404, detail="previous run audio was not found")
+                shutil.copy2(previous_audio, audio_path)
+                tts_instruct = str(previous.get("tts_instruct_sent") or "")
+                timings["tts"] = 0.0
+                yield {"type": "stage", "stage": "tts", "status": "done", "duration": 0.0}
+                await asyncio.sleep(0.01)
+
             start = time.perf_counter()
-            yield {"type": "stage", "stage": "tts", "status": "running"}
+            yield {"type": "stage", "stage": "audio_probe", "status": "running"}
             await asyncio.sleep(0.01)
             self._check_cancel(run_state)
-            tts_instruct = await self.tts.synthesize(
-                text=plan["reply"],
-                instruct=plan["cosyvoice_instruct"],
-                voice_id=voice_id,
-                output_path=audio_path,
-            )
-            timings["tts"] = round(time.perf_counter() - start, 3)
-            yield {"type": "stage", "stage": "tts", "status": "done", "duration": timings["tts"]}
+            audio_duration = await asyncio.to_thread(self.media.duration, audio_path)
+            if audio_duration < 0.2:
+                raise RuntimeError("TTS audio is too short for video generation")
+            timings["audio_probe"] = round(time.perf_counter() - start, 3)
+            yield {"type": "stage", "stage": "audio_probe", "status": "done", "duration": timings["audio_probe"]}
             await asyncio.sleep(0.01)
-        else:
-            previous_audio = self._previous_artifact(req.run_id, str(previous.get("ltx_input_audio") or "voice.wav"))
-            if not previous_audio.exists():
-                raise HTTPException(status_code=404, detail="previous run audio was not found")
-            shutil.copy2(previous_audio, audio_path)
-            tts_instruct = str(previous.get("tts_instruct_sent") or "")
-            timings["tts"] = 0.0
-            yield {"type": "stage", "stage": "tts", "status": "done", "duration": 0.0}
-            await asyncio.sleep(0.01)
-
-        start = time.perf_counter()
-        yield {"type": "stage", "stage": "audio_probe", "status": "running"}
-        await asyncio.sleep(0.01)
-        self._check_cancel(run_state)
-        audio_duration = await asyncio.to_thread(self.media.duration, audio_path)
-        if audio_duration < 0.2:
-            raise RuntimeError("TTS audio is too short for video generation")
-        timings["audio_probe"] = round(time.perf_counter() - start, 3)
-        yield {"type": "stage", "stage": "audio_probe", "status": "done", "duration": timings["audio_probe"]}
-        await asyncio.sleep(0.01)
 
         actual_resolution = requested_resolution
         video_prompt = plan["wan_prompt"]
-        if final_video_backend == "ltx_ia2v":
+        if final_video_backend == "ltx_native_audio":
             ltx_requested_resolution = self._previous_ltx_resolution(previous, requested_resolution)
-            video_prompt = self.llm.video_prompt_for_reply(plan["wan_prompt"], plan["reply"])
+            video_prompt = self.llm.native_audio_prompt_for_reply(plan["wan_prompt"], plan["reply"])
+            self._check_cancel(run_state)
+            yield {"type": "stage", "stage": "ltx_native_audio", "status": "running"}
+            await asyncio.sleep(0.01)
             start = time.perf_counter()
-            yield {"type": "stage", "stage": "ltx_ia2v", "status": "running"}
+            ltx_resolution = self.video.ltx_output_size(ltx_requested_resolution)
+            base_path = await self.video.generate_ltx_native_audio_video(
+                avatar_path=avatar_path,
+                prompt=video_prompt,
+                duration=audio_duration,
+                run_id=run_id,
+                run_dir=out_dir,
+                resolution=ltx_requested_resolution,
+                run_state=run_state,
+            )
+            talk_path = out_dir / "final.mp4"
+            shutil.copy2(base_path, talk_path)
+            timings["ltx_native_audio"] = round(time.perf_counter() - start, 3)
+            yield {
+                "type": "stage",
+                "stage": "ltx_native_audio",
+                "status": "done",
+                "duration": timings["ltx_native_audio"],
+            }
+            await asyncio.sleep(0.01)
+
+            start = time.perf_counter()
+            yield {"type": "stage", "stage": "native_audio_export", "status": "running"}
             await asyncio.sleep(0.01)
             self._check_cancel(run_state)
+            await asyncio.to_thread(self.media.extract_audio, talk_path, audio_path)
+            audio_duration = await asyncio.to_thread(self.media.duration, audio_path)
+            if audio_duration < 0.2:
+                raise RuntimeError("LTX native audio is too short for video generation")
+            timings["native_audio_export"] = round(time.perf_counter() - start, 3)
+            yield {
+                "type": "stage",
+                "stage": "native_audio_export",
+                "status": "done",
+                "duration": timings["native_audio_export"],
+            }
+            await asyncio.sleep(0.01)
+
+            actual_resolution = ltx_resolution
+            base_meta = {
+                "ltx_audio_mode": "native",
+                "ltx_generated_audio": audio_path.name,
+                "ltx_native_audio_estimated_duration": round(self._estimate_ltx_native_audio_duration(plan["reply"]), 3),
+                "ltx_width": ltx_resolution,
+                "ltx_height": ltx_resolution,
+                "ltx_fps": self.settings.ltx_fps,
+            }
+        elif final_video_backend == "ltx_ia2v":
+            ltx_requested_resolution = self._previous_ltx_resolution(previous, requested_resolution)
+            video_prompt = self.llm.video_prompt_for_reply(plan["wan_prompt"], plan["reply"])
+            self._check_cancel(run_state)
+            yield {"type": "stage", "stage": "pre_ltx_vram_release", "status": "running"}
+            await asyncio.sleep(0.01)
+            await self._release_vram_for_ltx(timings, run_state)
+            yield {
+                "type": "stage",
+                "stage": "pre_ltx_vram_release",
+                "status": "done",
+                "duration": timings.get("pre_ltx_vram_release", 0.0),
+            }
+            await asyncio.sleep(0.01)
+            yield {"type": "stage", "stage": "ltx_ia2v", "status": "running"}
+            await asyncio.sleep(0.01)
+            start = time.perf_counter()
             ltx_resolution = self.video.ltx_output_size(ltx_requested_resolution)
             base_path = await self.video.generate_ltx_ia2v_video(
                 avatar_path=avatar_path,
@@ -343,8 +526,10 @@ class TalkingAvatarPipeline:
             timings["ltx_ia2v"] = round(time.perf_counter() - start, 3)
             yield {"type": "stage", "stage": "ltx_ia2v", "status": "done", "duration": timings["ltx_ia2v"]}
             await asyncio.sleep(0.01)
+
             actual_resolution = ltx_resolution
             base_meta = {
+                "ltx_audio_mode": "external_tts",
                 "ltx_input_audio": audio_path.name,
                 "ltx_width": ltx_resolution,
                 "ltx_height": ltx_resolution,
@@ -369,6 +554,18 @@ class TalkingAvatarPipeline:
             timings["base_video"] = round(time.perf_counter() - start, 3)
             yield {"type": "stage", "stage": "base_video", "status": "done", "duration": timings["base_video"]}
             await asyncio.sleep(0.01)
+
+            if mode in {"wan", "wan_loop"}:
+                yield {"type": "stage", "stage": "post_wan_comfy_release", "status": "running"}
+                await asyncio.sleep(0.01)
+                await self._release_comfy_for_musetalk(timings, "post_wan_comfy_release", run_state)
+                yield {
+                    "type": "stage",
+                    "stage": "post_wan_comfy_release",
+                    "status": "done",
+                    "duration": timings["post_wan_comfy_release"],
+                }
+                await asyncio.sleep(0.01)
 
             start = time.perf_counter()
             yield {"type": "stage", "stage": "musetalk", "status": "running"}
@@ -423,7 +620,7 @@ class TalkingAvatarPipeline:
             tts_instruct_sent=tts_instruct,
             wan_prompt=video_prompt,
             audio_duration=round(audio_duration, 3),
-            timings=timings,
+            timings=dict(timings),
             audio_url=media_url(self.settings, audio_path),
             base_video_url=media_url(self.settings, base_path),
             video_url=media_url(self.settings, talk_path),
@@ -432,10 +629,80 @@ class TalkingAvatarPipeline:
             final_video_backend=final_video_backend,
         )
         yield {"type": "result", "data": response.model_dump()}
+        if final_video_backend == "ltx_ia2v":
+            self._schedule_tts_reload_after_ltx(timings, run_state)
 
     def _check_cancel(self, run_state: RunState | None) -> None:
         if run_state:
             run_state.check()
+
+    async def _release_vram_for_ltx(self, timings: dict[str, float], run_state: RunState | None = None) -> None:
+        if not (self.settings.ltx_unload_llm_before_video or self.settings.ltx_unload_tts_before_video):
+            return
+        start = time.perf_counter()
+        self._check_cancel(run_state)
+        if self.settings.ltx_unload_llm_before_video:
+            await self.services.unload_llm_for_ltx()
+        self._check_cancel(run_state)
+        if self.settings.ltx_unload_tts_before_video:
+            await self.services.unload_tts_for_ltx()
+        timings["pre_ltx_vram_release"] = round(time.perf_counter() - start, 3)
+        self._check_cancel(run_state)
+
+    async def _release_comfy_for_musetalk(
+        self,
+        timings: dict[str, float],
+        key: str,
+        run_state: RunState | None = None,
+    ) -> None:
+        start = time.perf_counter()
+        self._check_cancel(run_state)
+        await self.video.comfy.free_memory()
+        timings[key] = round(time.perf_counter() - start, 3)
+        self._check_cancel(run_state)
+
+    def _schedule_tts_reload_after_ltx(self, timings: dict[str, float], run_state: RunState | None = None) -> None:
+        stage = "post_ltx_tts_preload"
+        if not self.settings.ltx_reload_tts_after_video:
+            timings[stage] = 0.0
+            if run_state:
+                run_state.record_stage({"stage": stage, "status": "done", "duration": 0.0})
+            return
+        if run_state:
+            run_state.record_stage({"stage": stage, "status": "running"})
+        task = asyncio.create_task(self._reload_tts_after_ltx_background(timings, run_state))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _reload_tts_after_ltx_background(
+        self,
+        timings: dict[str, float],
+        run_state: RunState | None = None,
+    ) -> None:
+        status, duration = await self._reload_tts_after_ltx(timings)
+        if run_state:
+            run_state.record_stage(
+                {
+                    "stage": "post_ltx_tts_preload",
+                    "status": status,
+                    "duration": duration,
+                }
+            )
+
+    async def _reload_tts_after_ltx(self, timings: dict[str, float]) -> tuple[str, float]:
+        if not self.settings.ltx_reload_tts_after_video:
+            timings["post_ltx_tts_preload"] = 0.0
+            return "done", 0.0
+        start = time.perf_counter()
+        try:
+            await self.services.preload_tts_after_ltx()
+        except Exception:
+            duration = round(time.perf_counter() - start, 3)
+            timings["post_ltx_tts_preload_failed"] = duration
+            return "failed", duration
+        duration = round(time.perf_counter() - start, 3)
+        timings["post_ltx_tts_preload"] = duration
+        return "done", duration
 
     def _output_resolution(self, requested: int | None) -> int:
         value = int(requested or self.settings.output_size)
@@ -464,10 +731,22 @@ class TalkingAvatarPipeline:
     def _voice_language(self, text: str) -> str:
         return "zh" if any("\u4e00" <= char <= "\u9fff" for char in text) else "en"
 
+    def _estimate_ltx_native_audio_duration(self, text: str) -> float:
+        cleaned = re.sub(r"\s+", " ", text or "").strip()
+        cjk_chars = sum(1 for char in cleaned if "\u4e00" <= char <= "\u9fff")
+        latin_words = len(re.findall(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?", cleaned))
+        punctuation_pauses = len(re.findall(r"[,.!?;:\u3002\uff0c\uff01\uff1f\uff1b\uff1a]", cleaned)) * 0.18
+        estimated = (cjk_chars / 4.6) + (latin_words / 2.45) + punctuation_pauses + 0.45
+        minimum = max(0.5, float(self.settings.ltx_native_audio_min_seconds))
+        maximum = max(minimum, float(self.settings.ltx_native_audio_max_seconds))
+        return round(max(minimum, min(maximum, estimated)), 3)
+
     def _run_backend(self, previous: dict) -> str:
         backend = str(previous.get("final_video_backend") or "").strip()
-        if backend in {"ltx_ia2v", "musetalk"}:
+        if backend in {"ltx_ia2v", "ltx_native_audio", "musetalk"}:
             return backend
+        if previous.get("ltx_audio_mode") == "native" or previous.get("ltx_generated_audio"):
+            return "ltx_native_audio"
         if previous.get("ltx_input_audio") or previous.get("ltx_width") or previous.get("ltx_height"):
             return "ltx_ia2v"
         return "musetalk"

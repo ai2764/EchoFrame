@@ -32,6 +32,14 @@ LTX_FILES = [
     ("text_encoders", "ltx_text_encoder"),
     ("latent_upscale_models", "ltx_upscale_model"),
 ]
+LTX_GGUF_FILES = [
+    ("unet", "ltx_gguf_model"),
+    ("text_encoders", "ltx_text_encoder"),
+    ("text_encoders", "ltx_text_projection"),
+    ("vae", "ltx_video_vae"),
+    ("vae", "ltx_audio_vae"),
+    ("latent_upscale_models", "ltx_upscale_model"),
+]
 
 
 @dataclass(frozen=True)
@@ -100,15 +108,13 @@ class ModelManifest:
         return ModelCheck("comfyui", ok, "model present" if ok else "missing: " + ", ".join(missing[:4]))
 
     def check_video_models(self) -> ModelCheck:
-        if self.settings.final_video_backend == "ltx_ia2v":
+        if self.settings.final_video_backend in {"ltx_ia2v", "ltx_native_audio"}:
             return self.check_ltx_ia2v()
         return self.check_wan()
 
     def check_ltx_ia2v(self) -> ModelCheck:
         missing = []
-        for folder, setting_name in LTX_FILES:
-            if setting_name == "ltx_checkpoint" and self.settings.ltx_profile == "fast":
-                setting_name = "ltx_fast_checkpoint"
+        for folder, setting_name in self._ltx_files:
             name = str(getattr(self.settings, setting_name))
             target = self.comfy_models_dir / folder / name
             if not target.exists():
@@ -147,7 +153,7 @@ class ModelManifest:
             self._download_tts()
             completed.append("cosyvoice")
         if not self.check_video_models().ok:
-            if self.settings.final_video_backend == "ltx_ia2v":
+            if self.settings.final_video_backend in {"ltx_ia2v", "ltx_native_audio"}:
                 raise RuntimeError("automatic LTX IA2V model download is not configured; place the LTX models in ComfyUI models")
             self._download_wan()
             completed.append("comfyui")
@@ -176,6 +182,15 @@ class ModelManifest:
         files = list(WAN_FILES)
         if self.settings.wan_use_4step_lora:
             files.extend(WAN_LORA_FILES)
+        return files
+
+    @property
+    def _ltx_files(self) -> list[tuple[str, str]]:
+        if self.settings.ltx_model_format == "gguf" or str(self.settings.ltx_checkpoint).lower().endswith(".gguf"):
+            return list(LTX_GGUF_FILES)
+        files = list(LTX_FILES)
+        if self.settings.ltx_profile == "fast":
+            files = [("checkpoints", "ltx_fast_checkpoint") if name == "ltx_checkpoint" else (folder, name) for folder, name in files]
         return files
 
     def _ltx_lora_candidates(self) -> list[str]:

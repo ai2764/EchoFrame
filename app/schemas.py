@@ -13,15 +13,28 @@ class ChatRequest(BaseModel):
     message: str = Field(default="", max_length=1000)
     reply_override: str | None = Field(default=None, max_length=2000)
     mode: Literal["fast", "wan_loop", "wan"] = "fast"
-    final_video_backend: Literal["ltx_ia2v", "musetalk"] | None = None
+    final_video_backend: Literal["ltx_ia2v", "ltx_native_audio", "musetalk"] | None = None
     voice_id: str | None = None
     voice: Literal["female", "male"] | None = None
-    resolution: int | None = Field(default=None, ge=120, le=512)
+    resolution: int | None = Field(default=None, ge=120, le=1028)
 
 
 class RegenerateRequest(BaseModel):
     run_id: str
     stage: Literal["llm", "tts", "video"]
+
+
+class PrepareRequest(BaseModel):
+    final_video_backend: Literal["ltx_ia2v", "ltx_native_audio", "musetalk"]
+    mode: Literal["fast", "wan_loop", "wan"] = "fast"
+    resolution: int | None = Field(default=None, ge=120, le=1028)
+
+
+class PrepareResponse(BaseModel):
+    ok: bool
+    workflow: str
+    detail: str
+    timings: dict[str, float] = Field(default_factory=dict)
 
 
 class ChatResponse(BaseModel):

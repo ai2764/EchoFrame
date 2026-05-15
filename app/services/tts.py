@@ -195,6 +195,15 @@ def _drop_native_worker(worker: NativeCosyVoiceWorker) -> None:
             _WORKER = None
 
 
+def _drop_active_native_worker() -> None:
+    global _WORKER
+    with _WORKER_LOCK:
+        worker = _WORKER
+        _WORKER = None
+    if worker:
+        worker.stop()
+
+
 def _native_env(settings: Settings) -> dict[str, str]:
     env = os.environ.copy()
     if settings.tts_cuda_visible_devices.strip():
@@ -247,6 +256,11 @@ class TTSClient:
         if self.settings.tts_backend != "native" or not self.settings.tts_native_worker:
             return
         await asyncio.to_thread(self._preload_native)
+
+    async def unload(self) -> None:
+        if self.settings.tts_backend != "native" or not self.settings.tts_native_worker:
+            return
+        await asyncio.to_thread(_drop_active_native_worker)
 
     async def _synthesize_http(self, text: str, instruct: str, voice_id: str, output_path: Path) -> None:
         output_path.parent.mkdir(parents=True, exist_ok=True)

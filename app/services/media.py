@@ -189,6 +189,24 @@ class MediaTools:
         ]
         self._run(cmd, timeout=300)
 
+    def extract_audio(self, video_path: Path, output_path: Path) -> None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            self.settings.ffmpeg_bin,
+            "-y",
+            "-i",
+            str(video_path),
+            "-map",
+            "0:a:0",
+            "-vn",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            str(output_path),
+        ]
+        self._run(cmd, timeout=120)
+
     def wan_length_for_duration(self, duration: float) -> int:
         frames = max(17, int(math.ceil(duration * self.settings.wan_fps)))
         return int(math.ceil((frames - 1) / 4) * 4 + 1)

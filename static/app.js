@@ -3,6 +3,7 @@ let mode = "fast";
 let videoBackend = "ltx_ia2v";
 let currentController = null;
 let serverRunActive = false;
+let prepareInFlight = false;
 let lastStatusRunId = "";
 let lastRenderedResultRunId = "";
 let lastResult = null;
@@ -13,20 +14,41 @@ const SERVICES_POLL_MS = 5000;
 const GPU_POLL_MS = 2000;
 const RUN_STATUS_POLL_MS = 2000;
 const RESOLUTION_MIN = 120;
-const RESOLUTION_MAX = 512;
+const RESOLUTION_MAX = 1028;
 const RESOLUTION_DEFAULT = 320;
 const UI_LANG_KEY = "echoframe.uiLang";
-const STAGES = [
-  ["llm", "stageLlm"],
-  ["tts", "stageTts"],
-  ["audio_probe", "stageAudioProbe"],
-  ["ltx_ia2v", "stageLtxIa2v"],
-  ["base_video", "stageBaseVideo"],
-  ["musetalk", "stageMuseTalk"],
-  ["total", "stageTotal"],
-];
+const STAGE_LABELS = {
+  llm: "stageLlm",
+  tts: "stageTts",
+  audio_probe: "stageAudioProbe",
+  native_audio_export: "stageNativeAudioExport",
+  pre_ltx_vram_release: "ltxVramRelease",
+  ltx_ia2v: "stageLtxIa2v",
+  ltx_native_audio: "stageLtxNativeAudio",
+  post_ltx_tts_preload: "ttsPreload",
+  pre_wan_comfy_release: "preWanComfyRelease",
+  base_video: "stageBaseVideo",
+  post_wan_comfy_release: "postWanComfyRelease",
+  musetalk: "stageMuseTalk",
+  total: "stageTotal",
+};
+const WORKFLOW_STAGES = {
+  ltx_ia2v: ["llm", "tts", "audio_probe", "pre_ltx_vram_release", "ltx_ia2v", "post_ltx_tts_preload", "total"],
+  ltx_native_audio: ["llm", "ltx_native_audio", "native_audio_export", "total"],
+  musetalk: [
+    "pre_wan_comfy_release",
+    "llm",
+    "tts",
+    "audio_probe",
+    "base_video",
+    "post_wan_comfy_release",
+    "musetalk",
+    "total",
+  ],
+};
 const WORKFLOW_LABELS = {
   ltx_ia2v: "workflowLtx",
+  ltx_native_audio: "workflowLtxNative",
   musetalk: "workflowWanMuseTalk",
 };
 const SERVICE_LABELS = {
@@ -43,6 +65,7 @@ const TRANSLATIONS = {
     idle: "空闲",
     services: "服务",
     refresh: "刷新",
+    prepare: "\u51c6\u5907",
     gpu: "GPU",
     gpuWaiting: "等待 GPU 状态",
     gpuUnavailable: "GPU 不可用",
@@ -52,7 +75,15 @@ const TRANSLATIONS = {
     language: "语言",
     workflow: "工作流",
     workflowLtx: "LTX IA2V",
+    workflowLtxNative: "LTX 原生声画",
     workflowWanMuseTalk: "Wan + MuseTalk",
+    flowText: "文本",
+    flowTts: "TTS",
+    flowLtx: "LTX",
+    flowLtxAv: "LTX 声画",
+    flowWan: "Wan",
+    flowMuseTalk: "口型",
+    flowMp4: "MP4",
     videoPrompt: "视频提示词",
     modeFast: "静图 + MuseTalk",
     modeWanLoop: "Wan 循环",
@@ -103,15 +134,26 @@ const TRANSLATIONS = {
     runningRun: "运行中 {id}",
     runningMuseTalk: "正在运行 MuseTalk",
     runningLtxIa2v: "正在运行 LTX IA2V",
+    runningLtxNativeAudio: "正在运行 LTX 原生声画",
     runningWanLoop: "正在运行 Wan Loop + MuseTalk",
     runningWan: "正在运行 Wan Full + MuseTalk",
+    preparingWorkflow: "\u51c6\u5907\u4e2d {workflow}",
+    preparedWorkflow: "\u51c6\u5907\u5b8c\u6210: {detail}",
+    prepareFailed: "\u51c6\u5907\u5931\u8d25",
     cancelledState: "已取消",
     stageLlm: "LLM",
     stageTts: "TTS",
     stageAudioProbe: "音频检查",
+    stageNativeAudioExport: "音轨导出",
     stageBaseVideo: "底片",
     stageMuseTalk: "MuseTalk",
     stageLtxIa2v: "LTX IA2V",
+    stageLtxNativeAudio: "LTX 原生声画",
+    ltxVramRelease: "LTX \u524d\u91ca\u653e\u663e\u5b58",
+    preWanComfyRelease: "先释放 Comfy",
+    postWanComfyRelease: "Wan 后释放 Comfy",
+    ttsPreload: "TTS \u56de\u8f7d",
+    ttsPreloadFailed: "TTS \u56de\u8f7d\u5931\u8d25",
     stageTotal: "总计",
     notRun: "未运行",
     stageRunning: "运行中",
@@ -121,6 +163,7 @@ const TRANSLATIONS = {
     ttsPresetVoice: "(空；使用稳定预设声音)",
     regenLlm: "重新生成文本",
     regenTts: "重新生成语音",
+    regenNativeAudio: "重新生成声画",
     regenVideo: "重新生成视频",
     regenerateNeedResult: "请先完成一次生成",
     regeneratingStage: "正在重新生成 {stage}",
@@ -129,6 +172,7 @@ const TRANSLATIONS = {
     idle: "Idle",
     services: "Services",
     refresh: "Refresh",
+    prepare: "Prepare",
     gpu: "GPU",
     gpuWaiting: "Waiting for GPU status",
     gpuUnavailable: "GPU unavailable",
@@ -136,7 +180,15 @@ const TRANSLATIONS = {
     avatar: "Avatar",
     workflow: "Workflow",
     workflowLtx: "LTX IA2V",
+    workflowLtxNative: "LTX Native A/V",
     workflowWanMuseTalk: "Wan + MuseTalk",
+    flowText: "Text",
+    flowTts: "TTS",
+    flowLtx: "LTX",
+    flowLtxAv: "LTX A/V",
+    flowWan: "Wan",
+    flowMuseTalk: "Lip",
+    flowMp4: "MP4",
     videoPrompt: "Video Prompt",
     mode: "Mode",
     language: "Language",
@@ -189,15 +241,26 @@ const TRANSLATIONS = {
     runningRun: "Running {id}",
     runningMuseTalk: "Running MuseTalk",
     runningLtxIa2v: "Running LTX IA2V",
+    runningLtxNativeAudio: "Running LTX Native A/V",
     runningWanLoop: "Running Wan Loop + MuseTalk",
     runningWan: "Running Wan Full + MuseTalk",
+    preparingWorkflow: "Preparing {workflow}",
+    preparedWorkflow: "Prepared: {detail}",
+    prepareFailed: "Prepare failed",
     cancelledState: "Cancelled",
     stageLlm: "LLM",
     stageTts: "TTS",
     stageAudioProbe: "Audio Probe",
+    stageNativeAudioExport: "Audio Export",
     stageBaseVideo: "Base Video",
     stageMuseTalk: "MuseTalk",
     stageLtxIa2v: "LTX IA2V",
+    stageLtxNativeAudio: "LTX Native A/V",
+    ltxVramRelease: "Pre-LTX VRAM release",
+    preWanComfyRelease: "Release Comfy first",
+    postWanComfyRelease: "Post-Wan Comfy release",
+    ttsPreload: "TTS reload",
+    ttsPreloadFailed: "TTS reload failed",
     stageTotal: "Total",
     notRun: "not run",
     stageRunning: "running",
@@ -207,6 +270,7 @@ const TRANSLATIONS = {
     ttsPresetVoice: "(empty; stable preset voice)",
     regenLlm: "Regenerate Text",
     regenTts: "Regenerate Voice",
+    regenNativeAudio: "Regenerate A/V",
     regenVideo: "Regenerate Video",
     regenerateNeedResult: "Generate a result first",
     regeneratingStage: "Regenerating {stage}",
@@ -216,6 +280,7 @@ const TRANSLATIONS = {
 let uiLang = chooseInitialLanguage();
 let runStateKey = "idle";
 let runStateParams = {};
+let activeStageWorkflow = videoBackend;
 
 const $ = (id) => document.getElementById(id);
 
@@ -248,6 +313,7 @@ function applyTranslations() {
   });
   updateRunStateText();
   updateStageTexts();
+  updateRegenerateButtons();
 }
 
 function setLanguage(lang) {
@@ -283,10 +349,20 @@ function setRunError(text = "") {
   box.hidden = !text;
 }
 
-function initStageStatus() {
+function stageEntries(workflow = activeStageWorkflow) {
+  const keys = WORKFLOW_STAGES[workflow] || WORKFLOW_STAGES.ltx_ia2v;
+  return keys.map((key) => [key, STAGE_LABELS[key] || key]);
+}
+
+function visibleStageKeys() {
+  return stageEntries().map(([key]) => key);
+}
+
+function initStageStatus(workflow = activeStageWorkflow) {
+  activeStageWorkflow = WORKFLOW_STAGES[workflow] ? workflow : "ltx_ia2v";
   const box = $("stageStatus");
   box.innerHTML = "";
-  for (const [key, labelKey] of STAGES) {
+  for (const [key, labelKey] of stageEntries(activeStageWorkflow)) {
     const chip = document.createElement("div");
     chip.className = "stageChip idle";
     chip.id = `stage-${key}`;
@@ -308,7 +384,7 @@ function setStage(key, status, duration = null) {
 }
 
 function updateStageTexts() {
-  for (const [key, labelKey] of STAGES) {
+  for (const [key, labelKey] of stageEntries()) {
     const chip = $(`stage-${key}`);
     if (!chip) continue;
     chip.querySelector("strong").textContent = tr(labelKey);
@@ -321,14 +397,14 @@ function stageStatusText(status, duration = null) {
   if (status === "running") return tr("stageRunning");
   if (status === "done") return tr("stageDone", { duration: duration ?? 0 });
   if (status === "cancelled") return tr("stageCancelled");
-  if (status === "failed") return tr("stageFailed");
+  if (status === "failed") {
+    return duration == null ? tr("stageFailed") : `${tr("stageFailed")} ${duration}s`;
+  }
   return tr("notRun");
 }
 
-function resetRunStatus() {
-  for (const [key] of STAGES) {
-    setStage(key, "idle");
-  }
+function resetRunStatus(workflow = activeStageWorkflow) {
+  initStageStatus(workflow);
   setRunError("");
   $("timings").innerHTML = "";
 }
@@ -336,6 +412,8 @@ function resetRunStatus() {
 function setRunning(running) {
   $("send").disabled = running;
   $("stop").disabled = !running;
+  const prepareButton = $("prepareWorkflow");
+  if (prepareButton) prepareButton.disabled = running || prepareInFlight;
   updateRegenerateButtons();
 }
 
@@ -541,6 +619,10 @@ function applyRunStatus(data) {
   const runId = data.run_id || "";
   const isNewRun = runId && runId !== lastStatusRunId;
   setServerRunActive(Boolean(data.active));
+  const resultWorkflow = data.result?.final_video_backend;
+  if (resultWorkflow && resultWorkflow !== activeStageWorkflow) {
+    initStageStatus(resultWorkflow);
+  }
   for (const [stage, item] of Object.entries(data.stages || {})) {
     setStage(stage, item.status || "idle", item.duration);
   }
@@ -581,6 +663,33 @@ async function uploadAvatar(file) {
   setStateKey("avatarReady");
 }
 
+async function prepareCurrentWorkflow() {
+  if (prepareInFlight || currentController || serverRunActive) return;
+  prepareInFlight = true;
+  setRunning(true);
+  $("stop").disabled = true;
+  setRunError("");
+  setStateKey("preparingWorkflow", { workflow: workflowLabel(videoBackend) });
+  try {
+    const res = await fetch("/api/prepare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        final_video_backend: videoBackend,
+        mode,
+        resolution: getResolution(),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.ok === false) throw new Error(data.detail || tr("prepareFailed"));
+    setStateKey("preparedWorkflow", { detail: data.detail || workflowLabel(videoBackend) });
+    refreshAll();
+  } finally {
+    prepareInFlight = false;
+    setRunning(Boolean(currentController || serverRunActive));
+  }
+}
+
 async function generate() {
   if (!avatarId) throw new Error(tr("uploadAvatarFirst"));
   const message = $("message").value.trim();
@@ -591,7 +700,7 @@ async function generate() {
   setRunning(true);
   lastStatusRunId = "";
   lastRenderedResultRunId = "";
-  resetRunStatus();
+  resetRunStatus(videoBackend);
   setStateKey(runningStateKey());
   try {
     const res = await fetch("/api/chat-stream", {
@@ -630,7 +739,7 @@ async function regenerate(stage) {
   setRunning(true);
   lastStatusRunId = "";
   lastRenderedResultRunId = "";
-  resetRunStatus();
+  resetRunStatus(lastResult.final_video_backend || videoBackend);
   setStateKey("regeneratingStage", { stage: regenerateStageLabel(stage) });
   try {
     const res = await fetch("/api/regenerate-stream", {
@@ -697,14 +806,14 @@ function handleEvent(event) {
 }
 
 function markRunningFailed() {
-  for (const [key] of STAGES) {
+  for (const key of visibleStageKeys()) {
     const chip = $(`stage-${key}`);
     if (chip && chip.classList.contains("running")) setStage(key, "failed");
   }
 }
 
 function markRunningCancelled() {
-  for (const [key] of STAGES) {
+  for (const key of visibleStageKeys()) {
     const chip = $(`stage-${key}`);
     if (chip && chip.classList.contains("running")) setStage(key, "cancelled");
   }
@@ -745,14 +854,18 @@ function renderResult(data) {
 }
 
 function updateRegenerateButtons() {
-  const disabled = Boolean(currentController || serverRunActive || !lastResult?.run_id);
+  const disabled = Boolean(currentController || serverRunActive || prepareInFlight || !lastResult?.run_id);
+  const nativeAudio = lastResult?.final_video_backend === "ltx_native_audio";
   for (const id of ["regenLlm", "regenTts", "regenVideo"]) {
     const button = $(id);
     if (button) button.disabled = disabled;
   }
+  const ttsButton = $("regenTts");
+  if (ttsButton) ttsButton.textContent = tr(nativeAudio ? "regenNativeAudio" : "regenTts");
 }
 
 function runningStateKey() {
+  if (videoBackend === "ltx_native_audio") return "runningLtxNativeAudio";
   if (videoBackend === "ltx_ia2v") return "runningLtxIa2v";
   if (mode === "wan_loop") return "runningWanLoop";
   if (mode === "wan") return "runningWan";
@@ -782,6 +895,7 @@ function updateWorkflowControls() {
 
 function regenerateStageLabel(stage) {
   if (stage === "llm") return tr("regenLlm");
+  if (stage === "tts" && lastResult?.final_video_backend === "ltx_native_audio") return tr("regenNativeAudio");
   if (stage === "tts") return tr("regenTts");
   if (stage === "video") return tr("regenVideo");
   return stage;
@@ -789,13 +903,10 @@ function regenerateStageLabel(stage) {
 
 function timingLabel(key) {
   const labels = {
-    llm: "stageLlm",
-    tts: "stageTts",
-    audio_probe: "stageAudioProbe",
-    base_video: "stageBaseVideo",
-    musetalk: "stageMuseTalk",
-    ltx_ia2v: "stageLtxIa2v",
-    total: "stageTotal",
+    ...STAGE_LABELS,
+    pre_ltx_vram_release: "ltxVramRelease",
+    post_ltx_tts_preload: "ttsPreload",
+    post_ltx_tts_preload_failed: "ttsPreloadFailed",
   };
   return labels[key] ? tr(labels[key]) : key;
 }
@@ -831,6 +942,7 @@ document.querySelectorAll(".workflow").forEach((button) => {
     button.classList.add("active");
     videoBackend = button.dataset.backend;
     updateWorkflowControls();
+    if (!currentController && !serverRunActive) resetRunStatus(videoBackend);
   });
 });
 
@@ -872,6 +984,14 @@ $("send").addEventListener("click", async () => {
 });
 
 $("stop").addEventListener("click", stopWorkflow);
+$("prepareWorkflow").addEventListener("click", async () => {
+  try {
+    await prepareCurrentWorkflow();
+  } catch (err) {
+    setRunError(err.message);
+    setStateKey("prepareFailed");
+  }
+});
 $("regenLlm").addEventListener("click", async () => {
   try {
     await regenerate("llm");
@@ -907,7 +1027,7 @@ $("services").addEventListener("click", async (event) => {
     setState(err.message);
   }
 });
-initStageStatus();
+initStageStatus(videoBackend);
 updateWorkflowControls();
 applyTranslations();
 setResolution(RESOLUTION_DEFAULT);

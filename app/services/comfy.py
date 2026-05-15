@@ -1,7 +1,9 @@
 import math
 import random
 import shutil
+import struct
 import time
+import zlib
 from pathlib import Path
 
 import httpx
@@ -36,6 +38,14 @@ class ComfyClient:
         if self.settings.ltx_profile == "fast":
             return self.settings.ltx_fast_checkpoint
         return self.settings.ltx_checkpoint
+
+    def _ltx_uses_gguf(self) -> bool:
+        return self.settings.ltx_model_format == "gguf" or self._ltx_checkpoint_name().lower().endswith(".gguf")
+
+    def _ltx_gguf_name(self) -> str:
+        if self._ltx_checkpoint_name().lower().endswith(".gguf"):
+            return self._ltx_checkpoint_name()
+        return self.settings.ltx_gguf_model
 
     def _ltx_lora_name(self) -> str:
         if self.settings.ltx_profile != "quality" or self.settings.ltx_lora_strength <= 0:
@@ -125,6 +135,7 @@ class ComfyClient:
         width: int | None = None,
         height: int | None = None,
         fps: int | None = None,
+        unload_after: bool | None = None,
     ) -> Path:
         if run_state:
             run_state.check()
@@ -166,8 +177,88 @@ class ComfyClient:
             shutil.copy2(output, dst)
             return dst
         finally:
-            if self.settings.comfy_unload_after_wan:
+            should_unload = self.settings.ltx_unload_after_video if unload_after is None else unload_after
+            if should_unload:
                 await self.free_memory()
+
+    async def generate_ltx_native_audio(
+        self,
+        image_path: Path,
+        prompt: str,
+        duration: float,
+        run_id: str,
+        run_dir: Path,
+        run_state: RunState | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        fps: int | None = None,
+        unload_after: bool | None = None,
+    ) -> Path:
+        if run_state:
+            run_state.check()
+        self.settings.comfy_input_dir.mkdir(parents=True, exist_ok=True)
+        image_name = f"{run_id}_avatar.png"
+        shutil.copy2(image_path, self.settings.comfy_input_dir / image_name)
+        prefix = f"{run_id}_ltx_native_audio"
+        workflow = self._ltx_ia2v_workflow(
+            image_name=image_name,
+            audio_name="",
+            prompt=prompt,
+            video_prefix=prefix,
+            duration=duration,
+            seed=random.randint(1, 999999999),
+            width=width,
+            height=height,
+            fps=fps,
+            native_audio=True,
+        )
+        try:
+            if run_state:
+                run_state.check()
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                r = await client.post(self.settings.comfy_url.rstrip("/") + "/prompt", json=workflow)
+            if r.status_code != 200:
+                raise RuntimeError(f"ComfyUI HTTP {r.status_code}: {r.text[:500]}")
+            body = r.json()
+            prompt_id = body.get("prompt_id")
+            if not prompt_id:
+                raise RuntimeError(f"ComfyUI rejected workflow: {body}")
+            if run_state:
+                run_state.set_comfy_prompt(self.settings.comfy_url, prompt_id)
+            outputs = await self._poll(prompt_id, run_state)
+            output = self._find_video(outputs)
+            if not output:
+                raise RuntimeError("ComfyUI completed but no native-audio LTX video output was found")
+            dst = run_dir / "ltx_native_audio.mp4"
+            shutil.copy2(output, dst)
+            return dst
+        finally:
+            should_unload = self.settings.ltx_unload_after_video if unload_after is None else unload_after
+            if should_unload:
+                await self.free_memory()
+
+    async def prepare_ltx_native_audio(self, resolution: int | None = None) -> None:
+        run_dir = self.settings.abs_data_dir / "prepare"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        image_path = run_dir / "ltx_prepare_avatar.png"
+        self._write_solid_png(image_path, 256, 256)
+        size = max(256, int(resolution or min(self.settings.ltx_width, self.settings.ltx_height)))
+        if size % 2:
+            size -= 1
+        await self.generate_ltx_native_audio(
+            image_path=image_path,
+            prompt=(
+                "front-facing talking portrait warmup, clean frame, no subtitles, no captions, "
+                "no on-screen text, no watermark"
+            ),
+            duration=0.25,
+            run_id=f"prepare_ltx_{int(time.time())}",
+            run_dir=run_dir,
+            width=size,
+            height=size,
+            fps=self.settings.ltx_fps,
+            unload_after=False,
+        )
 
     async def _poll(self, prompt_id: str, run_state: RunState | None = None) -> dict:
         deadline = time.time() + self.settings.comfy_timeout_seconds
@@ -214,6 +305,25 @@ class ComfyClient:
         except Exception:
             pass
         await self.free_memory()
+
+    def _write_solid_png(self, path: Path, width: int, height: int) -> None:
+        def chunk(tag: bytes, data: bytes) -> bytes:
+            return (
+                struct.pack(">I", len(data))
+                + tag
+                + data
+                + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+            )
+
+        row = b"\x00" + bytes([128, 128, 128]) * width
+        raw = row * height
+        png = (
+            b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, 9))
+            + chunk(b"IEND", b"")
+        )
+        path.write_bytes(png)
 
     def _find_video(self, outputs: dict) -> Path | None:
         for node in outputs.values():
@@ -473,6 +583,7 @@ class ComfyClient:
         width: int | None = None,
         height: int | None = None,
         fps: int | None = None,
+        native_audio: bool = False,
     ) -> dict:
         width = int(width or self.settings.ltx_width)
         height = int(height or self.settings.ltx_height)
@@ -482,8 +593,12 @@ class ComfyClient:
         latent_height = max(64, height // 2)
         frame_count = self.ltx_frame_count(duration, fps)
         ckpt = self._ltx_checkpoint_name()
+        uses_gguf = self._ltx_uses_gguf()
         lora_name = self._ltx_lora_name()
-        model_ref = ["293", 0] if lora_name else ["317", 0]
+        base_model_ref = ["317", 0]
+        model_ref = ["293", 0] if lora_name else base_model_ref
+        video_vae_ref = ["336", 0] if uses_gguf else ["317", 2]
+        audio_vae_ref = ["335", 0]
         workflow = {
             "prompt": {
                 "900": {"class_type": "LoadImage", "inputs": {"image": image_name}},
@@ -517,11 +632,11 @@ class ComfyClient:
                 "294": {"class_type": "ResizeImagesByLongerEdge", "inputs": {"images": ["297", 0], "longer_edge": 1536}},
                 "295": {
                     "class_type": "LTXVLatentUpsampler",
-                    "inputs": {"samples": ["309", 0], "upscale_model": ["313", 0], "vae": ["317", 2]},
+                    "inputs": {"samples": ["309", 0], "upscale_model": ["313", 0], "vae": video_vae_ref},
                 },
                 "296": {
                     "class_type": "LTXVImgToVideoInplace",
-                    "inputs": {"vae": ["317", 2], "image": ["334", 0], "latent": ["295", 0], "bypass": ["305", 0], "strength": 1},
+                    "inputs": {"vae": video_vae_ref, "image": ["334", 0], "latent": ["295", 0], "bypass": ["305", 0], "strength": 1},
                 },
                 "297": {
                     "class_type": "ResizeImageMaskNode",
@@ -539,7 +654,7 @@ class ComfyClient:
                     "class_type": "EmptyLTXVLatentVideo",
                     "inputs": {"width": latent_width, "height": latent_height, "length": frame_count, "batch_size": 1},
                 },
-                "303": {"class_type": "LTXVAudioVAEDecode", "inputs": {"samples": ["311", 1], "audio_vae": ["335", 0]}},
+                "303": {"class_type": "LTXVAudioVAEDecode", "inputs": {"samples": ["311", 1], "audio_vae": audio_vae_ref}},
                 "305": {"class_type": "PrimitiveBoolean", "inputs": {"value": False}},
                 "306": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["318", 0], "text": ["319", 0]}},
                 "307": {
@@ -573,24 +688,19 @@ class ComfyClient:
                     "class_type": "VAEDecodeTiled",
                     "inputs": {
                         "samples": ["311", 0],
-                        "vae": ["317", 2],
+                        "vae": video_vae_ref,
                         "tile_size": 768,
                         "overlap": 64,
                         "temporal_size": 4096,
                         "temporal_overlap": 4,
                     },
                 },
-                "317": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
-                "318": {
-                    "class_type": "LTXAVTextEncoderLoader",
-                    "inputs": {"text_encoder": self.settings.ltx_text_encoder, "ckpt_name": ckpt, "device": "default"},
-                },
                 "319": {"class_type": "PrimitiveStringMultiline", "inputs": {"value": prompt}},
                 "324": {"class_type": "PrimitiveInt", "inputs": {"value": height}},
                 "325": {
                     "class_type": "LTXVImgToVideoInplace",
                     "inputs": {
-                        "vae": ["317", 2],
+                        "vae": video_vae_ref,
                         "image": ["334", 0],
                         "latent": ["302", 0],
                         "bypass": ["305", 0],
@@ -602,11 +712,10 @@ class ComfyClient:
                     "inputs": {"video_latent": ["325", 0], "audio_latent": ["327", 0]},
                 },
                 "327": {"class_type": "SetLatentNoiseMask", "inputs": {"samples": ["328", 0], "mask": ["333", 0]}},
-                "328": {"class_type": "LTXVAudioVAEEncode", "inputs": {"audio": ["901", 0], "audio_vae": ["335", 0]}},
+                "328": {"class_type": "LTXVAudioVAEEncode", "inputs": {"audio": ["901", 0], "audio_vae": audio_vae_ref}},
                 "330": {"class_type": "PrimitiveInt", "inputs": {"value": width}},
                 "333": {"class_type": "SolidMask", "inputs": {"value": 0, "width": ["330", 0], "height": ["324", 0]}},
                 "334": {"class_type": "LTXVPreprocess", "inputs": {"image": ["294", 0], "img_compression": 18}},
-                "335": {"class_type": "LTXVAudioVAELoader", "inputs": {"ckpt_name": ckpt}},
                 "999": {
                     "class_type": "SaveVideo",
                     "inputs": {"video": ["312", 0], "filename_prefix": video_prefix, "format": "mp4", "codec": "h264"},
@@ -617,9 +726,50 @@ class ComfyClient:
             workflow["prompt"]["293"] = {
                 "class_type": "LoraLoaderModelOnly",
                 "inputs": {
-                    "model": ["317", 0],
+                    "model": base_model_ref,
                     "lora_name": lora_name,
                     "strength_model": self.settings.ltx_lora_strength,
+                },
+            }
+        if uses_gguf:
+            workflow["prompt"]["317"] = {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": self._ltx_gguf_name()}}
+            workflow["prompt"]["318"] = {
+                "class_type": "DualCLIPLoader",
+                "inputs": {
+                    "clip_name1": self.settings.ltx_text_encoder,
+                    "clip_name2": self.settings.ltx_text_projection,
+                    "type": "ltxv",
+                    "device": "default",
+                },
+            }
+            workflow["prompt"]["335"] = {
+                "class_type": "VAELoaderKJ",
+                "inputs": {"vae_name": self.settings.ltx_audio_vae, "device": "main_device", "weight_dtype": "bf16"},
+            }
+            workflow["prompt"]["336"] = {
+                "class_type": "VAELoaderKJ",
+                "inputs": {"vae_name": self.settings.ltx_video_vae, "device": "main_device", "weight_dtype": "bf16"},
+            }
+        else:
+            workflow["prompt"]["317"] = {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}}
+            workflow["prompt"]["318"] = {
+                "class_type": "LTXAVTextEncoderLoader",
+                "inputs": {"text_encoder": self.settings.ltx_text_encoder, "ckpt_name": ckpt, "device": "default"},
+            }
+            workflow["prompt"]["335"] = {"class_type": "LTXVAudioVAELoader", "inputs": {"ckpt_name": ckpt}}
+        if native_audio:
+            prompt_nodes = workflow["prompt"]
+            prompt_nodes.pop("901", None)
+            prompt_nodes.pop("327", None)
+            prompt_nodes.pop("333", None)
+            prompt_nodes["326"]["inputs"]["audio_latent"] = ["328", 0]
+            prompt_nodes["328"] = {
+                "class_type": "LTXVEmptyLatentAudio",
+                "inputs": {
+                    "frames_number": frame_count,
+                    "frame_rate": fps,
+                    "batch_size": 1,
+                    "audio_vae": audio_vae_ref,
                 },
             }
         return workflow

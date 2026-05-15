@@ -15,6 +15,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: linear-gradient(180deg, #f9faf7 0%, var(--bg) 42%, #eef3ef 100%);
@@ -536,20 +540,18 @@ button:disabled {
   flex: 1;
 }
 
-.workflowGroup,
+.workflowGroup {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(155px, 1fr));
+  gap: 8px;
+}
+
 .modeGroup {
   display: inline-grid;
+  grid-template-columns: repeat(3, 1fr);
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
-}
-
-.workflowGroup {
-  grid-template-columns: repeat(2, 1fr);
-}
-
-.modeGroup {
-  grid-template-columns: repeat(3, 1fr);
 }
 
 .langGroup {
@@ -567,7 +569,6 @@ button:disabled {
   border-radius: 0;
 }
 
-.workflow,
 .mode {
   min-width: 88px;
 }
@@ -582,6 +583,77 @@ button:disabled {
 .lang.active {
   background: var(--accent2);
   color: #fff;
+}
+
+.workflowCard {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfa;
+  color: var(--ink);
+  text-align: left;
+}
+
+.workflowCard.active {
+  background: #fff8ef;
+  border-color: var(--accent2);
+  box-shadow: inset 0 0 0 1px var(--accent2);
+  color: var(--ink);
+}
+
+.workflowTitle {
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.workflowFlow {
+  display: grid;
+  justify-items: stretch;
+  align-content: start;
+  gap: 4px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.flowStep {
+  display: inline-grid;
+  place-items: center;
+  width: 100%;
+  min-height: 26px;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.flowLink {
+  position: relative;
+  justify-self: center;
+  width: 1px;
+  height: 14px;
+  background: var(--muted);
+}
+
+.flowLink::after {
+  content: "";
+  position: absolute;
+  left: -3px;
+  bottom: -1px;
+  width: 0;
+  height: 0;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-top: 5px solid var(--muted);
 }
 
 .avatarPreview {
@@ -691,6 +763,10 @@ video {
 
   .langGroup {
     flex: 0 0 auto;
+  }
+
+  .workflowGroup {
+    grid-template-columns: 1fr;
   }
 
   button.primary {

@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     avatar_size: int = 512
     output_size: int = 320
     resolution_min: int = 120
-    resolution_max: int = 512
-    final_video_backend: Literal["ltx_ia2v", "musetalk"] = "ltx_ia2v"
+    resolution_max: int = 1028
+    final_video_backend: Literal["ltx_ia2v", "ltx_native_audio", "musetalk"] = "ltx_ia2v"
 
     llm_base_url: str = "http://127.0.0.1:1234/v1"
     llm_model: str = ""
@@ -99,17 +99,28 @@ class Settings(BaseSettings):
     wan_5b_scheduler: str = "simple"
 
     ltx_profile: Literal["quality", "fast"] = "quality"
+    ltx_model_format: Literal["checkpoint", "gguf"] = "checkpoint"
     ltx_width: int = 768
     ltx_height: int = 768
     ltx_fps: int = 24
+    ltx_native_audio_min_seconds: float = 2.4
+    ltx_native_audio_max_seconds: float = 8.0
+    ltx_unload_llm_before_video: bool = True
+    ltx_unload_tts_before_video: bool = True
+    ltx_reload_tts_after_video: bool = True
+    ltx_unload_after_video: bool = True
     ltx_checkpoint: str = "ltx-2.3-22b-dev-fp8.safetensors"
     ltx_fast_checkpoint: str = "ltx-2.3-22b-distilled-fp8.safetensors"
+    ltx_gguf_model: str = "LTX-2.3-dev-Q4_K_M.gguf"
     ltx_text_encoder: str = "gemma_3_12B_it_fp4_mixed.safetensors"
+    ltx_text_projection: str = "ltx-2.3_text_projection_bf16.safetensors"
+    ltx_video_vae: str = "LTX23_video_vae_bf16.safetensors"
+    ltx_audio_vae: str = "LTX23_audio_vae_bf16.safetensors"
     ltx_lora: str = "ltx-2.3-22b-distilled-lora-384-1.1.safetensors"
     ltx_lora_fallback: str = "ltx-2.3-22b-distilled-lora-384.safetensors"
     ltx_lora_strength: float = 0.5
     ltx_upscale_model: str = "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
-    ltx_negative_prompt: str = "zoom in, zooming in, camera push-in, punch-in, face close-up, cropped face, head cropped, extreme close-up, static portrait, frozen frame, motionless, still image, pc game, console game, video game, cartoon, childish, ugly"
+    ltx_negative_prompt: str = "zoom in, zooming in, camera push-in, punch-in, face close-up, cropped face, head cropped, extreme close-up, static portrait, frozen frame, motionless, still image, subtitles, captions, closed captions, text overlay, on-screen text, title card, lower third, karaoke lyrics, logo, watermark, pc game, console game, video game, cartoon, childish, ugly"
 
     musetalk_root: Path = Path("engines/musetalk")
     musetalk_python: str = "python"

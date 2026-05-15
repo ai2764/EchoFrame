@@ -118,6 +118,31 @@ class VideoGenerationModule:
             fps=self.settings.ltx_fps,
         )
 
+    async def generate_ltx_native_audio_video(
+        self,
+        avatar_path: Path,
+        prompt: str,
+        duration: float,
+        run_id: str,
+        run_dir: Path,
+        resolution: int | None = None,
+        run_state: RunState | None = None,
+    ) -> Path:
+        if self.services:
+            await self.services.ensure("comfyui")
+        output_size = self.ltx_output_size(resolution)
+        return await self.comfy.generate_ltx_native_audio(
+            image_path=avatar_path,
+            prompt=prompt,
+            duration=duration,
+            run_id=run_id,
+            run_dir=run_dir,
+            run_state=run_state,
+            width=output_size,
+            height=output_size,
+            fps=self.settings.ltx_fps,
+        )
+
     def ltx_output_size(self, requested: int | None = None) -> int:
         if requested is None:
             width = int(self.settings.ltx_width)

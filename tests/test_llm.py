@@ -131,3 +131,15 @@ def test_video_prompt_for_reply_adds_spoken_line(tmp_path):
 
     assert 'The person clearly speaks this exact line from start to finish: "你好，今天我们讲一个新方案。"' in prompt
     assert "The mouth opens and closes naturally" in prompt
+
+
+def test_native_audio_prompt_blocks_subtitles_and_extra_audio(tmp_path):
+    client = LLMClient(Settings(data_dir=tmp_path / "data"))
+
+    prompt = client.native_audio_prompt_for_reply("base talking prompt", "hello")
+
+    assert "generated speech audio" in prompt
+    assert "no subtitles" in prompt
+    assert "no captions" in prompt
+    assert "no text overlay" in prompt
+    assert "no extra narration" in prompt

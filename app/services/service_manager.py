@@ -4,6 +4,7 @@ import asyncio
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -11,7 +12,7 @@ from fastapi import HTTPException
 
 from app.config import Settings
 from app.paths import command_for_cwd, path_for_cwd
-from app.schemas import EngineActionResponse, EngineStatus
+from app.schemas import EngineActionResponse, EngineStatus, PrepareResponse
 from app.services.comfy import ComfyClient
 from app.services.gpu import gpu_status
 from app.services.llm import LLMClient
@@ -118,6 +119,59 @@ class ServiceManager:
         self._validate_name(name)
         await self.stop(name)
         return await self.start(name)
+
+    async def unload_llm_for_ltx(self) -> None:
+        await LLMClient(self.settings).unload_all_models()
+        if self._command_exists(self.settings.lms_bin):
+            await asyncio.to_thread(self._run_quiet, [self.settings.lms_bin, "unload", "--all"])
+
+    async def unload_tts_for_ltx(self) -> None:
+        if self.settings.tts_backend == "native":
+            await TTSClient(self.settings).unload()
+            return
+        if self.settings.tts_backend == "http" and self.settings.tts_manage_http_service:
+            port = self._port_for_service("cosyvoice")
+            if port:
+                await asyncio.to_thread(self._kill_port, port)
+                await asyncio.sleep(1.0)
+
+    async def preload_tts_after_ltx(self) -> None:
+        if self.settings.tts_backend == "native":
+            await TTSClient(self.settings).preload()
+            return
+        if self.settings.tts_backend == "http" and self.settings.tts_manage_http_service:
+            await self.start("cosyvoice")
+
+    async def prepare_workflow(self, backend: str, mode: str = "fast", resolution: int | None = None) -> PrepareResponse:
+        start = time.perf_counter()
+        if backend == "ltx_native_audio":
+            await self.ensure("comfyui")
+            await ComfyClient(self.settings).prepare_ltx_native_audio(resolution=resolution)
+            return PrepareResponse(
+                ok=True,
+                workflow=backend,
+                detail="LTX native A/V warmup completed",
+                timings={"prepare": round(time.perf_counter() - start, 3)},
+            )
+        if backend in {"ltx_ia2v", "musetalk"}:
+            await self.preload_tts_for_workflow()
+            label = "Wan + MuseTalk" if backend == "musetalk" else "LTX IA2V"
+            return PrepareResponse(
+                ok=True,
+                workflow=backend,
+                detail=f"TTS warmup completed for {label}",
+                timings={"prepare": round(time.perf_counter() - start, 3)},
+            )
+        raise HTTPException(status_code=400, detail="unknown workflow")
+
+    async def preload_tts_for_workflow(self) -> None:
+        if self.settings.tts_backend == "native":
+            await TTSClient(self.settings).preload()
+            return
+        if self.settings.tts_backend == "http" and self.settings.tts_manage_http_service:
+            await self.start("cosyvoice")
+            return
+        await self.ensure("cosyvoice")
 
     async def ensure(self, name: str) -> EngineStatus:
         status = await self.status(name)

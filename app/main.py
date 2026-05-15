@@ -16,6 +16,8 @@ from app.schemas import (
     EngineStatus,
     GpuStatus,
     HealthResponse,
+    PrepareRequest,
+    PrepareResponse,
     RegenerateRequest,
     ServiceStatus,
 )
@@ -146,6 +148,20 @@ async def stop_workflow(s: Settings = Depends(get_settings)):
     return {"ok": True, "run_id": state.run_id, "detail": "stop requested"}
 
 
+@app.post("/api/prepare", response_model=PrepareResponse)
+async def prepare_workflow(req: PrepareRequest, manager: ServiceManager = Depends(get_service_manager)):
+    try:
+        return await manager.prepare_workflow(
+            backend=req.final_video_backend,
+            mode=req.mode,
+            resolution=req.resolution,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.get("/api/run-status")
 async def run_status():
     return run_controller.latest_status()
@@ -189,12 +205,15 @@ async def service_logs(name: str, manager: ServiceManager = Depends(get_service_
 @app.get("/api/health", response_model=HealthResponse)
 async def health(s: Settings = Depends(get_settings)):
     llm_ok, llm_detail = await LLMClient(s).health()
-    tts_ok, tts_detail = await TTSClient(s).health()
+    if s.final_video_backend == "ltx_native_audio":
+        tts_ok, tts_detail = True, "not required for LTX native audio"
+    else:
+        tts_ok, tts_detail = await TTSClient(s).health()
     comfy_ok, comfy_detail = await ComfyClient(s).health()
     if s.final_video_backend == "musetalk":
         muse_ok, muse_detail = MuseTalkClient(s).health()
     else:
-        muse_ok, muse_detail = True, "not required for LTX IA2V"
+        muse_ok, muse_detail = True, "not required for selected LTX workflow"
     ffmpeg_ok, ffmpeg_detail = _ffmpeg_health(s)
     gpu_detail = gpu_summary()
     return HealthResponse(
