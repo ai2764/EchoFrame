@@ -23,6 +23,7 @@ server.err
 *.safetensors
 *.bin
 *.mp4
+!assets/samples/*.mp4
 *.mov
 *.wav
 *.flac

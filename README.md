@@ -14,6 +14,16 @@ The UI exposes three generation workflows:
 
 The repository is intentionally lightweight. It contains the EchoFrame UI/API, workflow code, service health checks, and small voice reference presets. It does not install or vendor heavy AI runtimes for pull-repo users.
 
+## Sample Outputs
+
+These short clips use the same Xiaomei avatar image and map to the three UI workflows. Generated run folders stay ignored; only these small demo samples are committed.
+
+| Workflow | Pipeline | Sample |
+|---|---|---|
+| `LTX IA2V` | CosyVoice TTS -> LTX image+audio-to-video -> MP4 | [xiaomei-ltx-ia2v.mp4](assets/samples/xiaomei-ltx-ia2v.mp4) |
+| `LTX Native A/V` | LTX image-to-video with generated speech audio -> MP4 | [xiaomei-ltx-native-av.mp4](assets/samples/xiaomei-ltx-native-av.mp4) |
+| `Wan + MuseTalk` | CosyVoice TTS -> base video -> MuseTalk lip sync -> MP4 | [xiaomei-wan-musetalk.mp4](assets/samples/xiaomei-wan-musetalk.mp4) |
+
 ## Two Distributions
 
 **Repo profile**
