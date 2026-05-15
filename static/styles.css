@@ -27,7 +27,8 @@ body {
 }
 
 .shell {
-  width: min(1180px, 100%);
+  width: 100%;
+  max-width: 1180px;
   min-height: 100vh;
   margin: 0 auto;
   padding: 24px;
@@ -38,6 +39,7 @@ body {
   grid-template-columns: 320px 1fr;
   gap: 16px;
   min-height: calc(100vh - 48px);
+  min-width: 0;
 }
 
 .panel {
@@ -45,6 +47,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: 0 14px 40px rgb(22 26 29 / 7%);
+  min-width: 0;
 }
 
 .side {
@@ -52,6 +55,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-width: 0;
 }
 
 .main {
@@ -59,6 +63,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 
 .brand {
@@ -109,8 +114,20 @@ dt {
 }
 
 .servicePanel {
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 14px;
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.sideSection {
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.avatarPanel {
+  padding-top: 4px;
+  border-top: 0;
 }
 
 .panelHeader {
@@ -314,13 +331,13 @@ dt {
 }
 
 .stagePanel {
-  border-top: 1px solid var(--line);
-  padding-top: 14px;
+  border-top: 0;
+  padding-top: 0;
 }
 
 .stageStatus {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(152px, 1fr));
   gap: 8px;
 }
 
@@ -350,15 +367,16 @@ dt {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--bad);
+  background: var(--muted);
 }
 
 .stageChip.idle {
-  border-color: color-mix(in srgb, var(--bad), white 65%);
+  border-color: var(--line);
+  background: #fbfcfa;
 }
 
 .stageChip.idle em {
-  color: var(--bad);
+  color: var(--muted);
 }
 
 .stageChip.running {
@@ -452,6 +470,28 @@ textarea {
   color: var(--ink);
 }
 
+input[type="file"] {
+  width: 100%;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+input[type="file"]::file-selector-button {
+  margin-right: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfcfa;
+  color: var(--ink);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+input[type="file"]::file-selector-button:hover {
+  border-color: var(--accent);
+}
+
 textarea {
   resize: vertical;
   min-height: 104px;
@@ -500,6 +540,109 @@ button:disabled {
 .actions {
   display: flex;
   gap: 8px;
+}
+
+.mainTop,
+.sectionHeader,
+.generateBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.mainTop {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mainTop h2 {
+  margin-bottom: 4px;
+  font-size: 18px;
+}
+
+.mainTop p,
+.workflowHint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.sectionBlock {
+  display: grid;
+  gap: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.sectionBlock:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.sectionHeader {
+  align-items: center;
+}
+
+.sectionHeader.compact {
+  min-height: 0;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.sectionTitle h2,
+.sectionHeader h2 {
+  margin-bottom: 0;
+}
+
+.sectionNumber {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid color-mix(in srgb, var(--accent), white 45%);
+  border-radius: 6px;
+  background: #edf8f4;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.secondaryAction {
+  min-width: 112px;
+  background: #fff8ef;
+  border-color: color-mix(in srgb, var(--accent2), white 40%);
+  color: #7a4111;
+  font-weight: 700;
+}
+
+.inputGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.generateBar {
+  align-items: end;
+  padding-top: 2px;
+}
+
+.settingsCluster {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) 150px;
+  align-items: end;
+  gap: 12px;
+  flex: 1;
+}
+
+.voiceField {
+  min-width: 140px;
 }
 
 .toolbar,
@@ -587,10 +730,10 @@ button:disabled {
 
 .workflowCard {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   gap: 8px;
   min-width: 0;
-  padding: 10px;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfcfa;
@@ -606,7 +749,7 @@ button:disabled {
 }
 
 .workflowTitle {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 750;
   line-height: 1.2;
 }
@@ -657,7 +800,7 @@ button:disabled {
 }
 
 .avatarPreview {
-  margin-top: 14px;
+  margin-top: 0;
   aspect-ratio: 1 / 1;
   border-radius: 8px;
   border: 1px dashed var(--line);
@@ -676,7 +819,7 @@ button:disabled {
 
 .resultGrid {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr);
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.1fr);
   gap: 16px;
 }
 
@@ -734,6 +877,11 @@ video {
   border-radius: 8px;
 }
 
+.resultPanel .output {
+  border-top: 0;
+  padding-top: 0;
+}
+
 @media (max-width: 860px) {
   .shell {
     padding: 12px;
@@ -745,12 +893,19 @@ video {
     grid-template-columns: 1fr;
   }
 
+  .mainTop,
   .toolbar,
   .settingsRow,
-  .row {
+  .row,
+  .generateBar {
     align-items: stretch;
     grid-template-columns: 1fr;
     flex-direction: column;
+  }
+
+  .inputGrid,
+  .settingsCluster {
+    grid-template-columns: 1fr;
   }
 
   .toolbarActions {
