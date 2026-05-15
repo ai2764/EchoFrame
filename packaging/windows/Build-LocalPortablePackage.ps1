@@ -5,7 +5,7 @@ param(
     [string]$CosyVoiceEnvPrefix = "$env:USERPROFILE\anaconda3\envs\cosyvoice",
     [string]$MuseTalkEnvPrefix = "$env:USERPROFILE\anaconda3\envs\musetalk",
     [string]$ComfyPythonBase = "$env:APPDATA\uv\python\cpython-3.12.9-windows-x86_64-none",
-    [string]$ComfyVenv = "$env:USERPROFILE\Desktop\GEN-ART\ComfyUI\.venv",
+    [string]$ComfyVenv = "",
     [string]$CosyVoiceRoot = "",
     [string]$MuseTalkRoot = "",
     [string]$ComfySourceRoot = "$env:LOCALAPPDATA\Programs\ComfyUI\resources\ComfyUI",
@@ -126,14 +126,24 @@ if (-not $MuseTalkRoot) {
 if (-not $FfmpegDir) {
     $FfmpegDir = Get-DotEnvValue "MUSETALK_FFMPEG_DIR"
 }
+$ComfyRoot = Get-DotEnvValue "COMFY_ROOT"
+if (-not $ComfyVenv -and $ComfyRoot) {
+    $ComfyVenv = Join-Path $ComfyRoot ".venv"
+}
 if (-not $ComfyUserRoot) {
     $comfyInput = Get-DotEnvValue "COMFY_INPUT_DIR"
     if ($comfyInput) {
         $ComfyUserRoot = Split-Path -Parent $comfyInput
     }
-    else {
-        $ComfyUserRoot = Join-Path $env:USERPROFILE "Desktop\GEN-ART\ComfyUI"
+    elseif ($ComfyRoot) {
+        $ComfyUserRoot = $ComfyRoot
     }
+    else {
+        $ComfyUserRoot = $ComfySourceRoot
+    }
+}
+if (-not $ComfyVenv) {
+    throw "ComfyUI venv path is required. Pass -ComfyVenv or set COMFY_ROOT in .env."
 }
 
 foreach ($required in @(

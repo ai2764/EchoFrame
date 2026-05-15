@@ -192,7 +192,7 @@ def test_gpu_process_memory_na_is_not_displayed_as_value():
     item = _format_ai_process(
         {
             "pid": "123",
-            "process_name": r"C:\Users\AIBOX\AppData\Roaming\uv\python\python.exe",
+            "process_name": r"uv\python\python.exe",
             "used_memory": "",
             "used_memory_mib": None,
             "memory_available": False,
