@@ -630,7 +630,11 @@ function applyRunStatus(data) {
   }
   const runId = data.run_id || "";
   const isNewRun = runId && runId !== lastStatusRunId;
-  setServerRunActive(Boolean(data.active));
+  const isActive = Boolean(data.active);
+  setServerRunActive(isActive);
+  // Polling returns the latest completed run forever. Once that run has already
+  // been rendered, ignore it so workflow selection can show its own idle stages.
+  if (!isActive && !isNewRun && !currentController) return;
   const resultWorkflow = data.result?.final_video_backend;
   if (resultWorkflow && resultWorkflow !== activeStageWorkflow) {
     initStageStatus(resultWorkflow);
@@ -644,7 +648,6 @@ function applyRunStatus(data) {
     if (runId) lastStatusRunId = runId;
     return;
   }
-  if (!isNewRun && !currentController) return;
   if (runId) lastStatusRunId = runId;
   if (data.result) renderResult(data.result);
   if (data.status === "done") {
