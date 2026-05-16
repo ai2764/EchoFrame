@@ -42,10 +42,17 @@ class ComfyClient:
     def _ltx_uses_gguf(self) -> bool:
         return self.settings.ltx_model_format == "gguf" or self._ltx_checkpoint_name().lower().endswith(".gguf")
 
+    def _ltx_uses_unet(self) -> bool:
+        # Experimental path for official LTX transformer-only UNET releases.
+        return self.settings.ltx_model_format == "unet"
+
     def _ltx_gguf_name(self) -> str:
         if self._ltx_checkpoint_name().lower().endswith(".gguf"):
             return self._ltx_checkpoint_name()
         return self.settings.ltx_gguf_model
+
+    def _ltx_unet_name(self) -> str:
+        return self.settings.ltx_unet_model
 
     def _ltx_lora_name(self) -> str:
         if self.settings.ltx_profile != "quality" or self.settings.ltx_lora_strength <= 0:
@@ -594,11 +601,13 @@ class ComfyClient:
         frame_count = self.ltx_frame_count(duration, fps)
         ckpt = self._ltx_checkpoint_name()
         uses_gguf = self._ltx_uses_gguf()
+        uses_unet = self._ltx_uses_unet()
+        uses_split_loaders = uses_gguf or uses_unet
         lora_name = self._ltx_lora_name()
         base_model_ref = ["317", 0]
         model_ref = ["293", 0] if lora_name else base_model_ref
-        video_vae_ref = ["336", 0] if uses_gguf else ["317", 2]
-        audio_vae_ref = ["335", 0]
+        video_vae_ref = ["336", 0] if uses_split_loaders else ["317", 2]
+        audio_vae_ref = ["335", 0] if uses_split_loaders else ["335", 0]
         workflow = {
             "prompt": {
                 "900": {"class_type": "LoadImage", "inputs": {"image": image_name}},
@@ -733,6 +742,29 @@ class ComfyClient:
             }
         if uses_gguf:
             workflow["prompt"]["317"] = {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": self._ltx_gguf_name()}}
+            workflow["prompt"]["318"] = {
+                "class_type": "DualCLIPLoader",
+                "inputs": {
+                    "clip_name1": self.settings.ltx_text_encoder,
+                    "clip_name2": self.settings.ltx_text_projection,
+                    "type": "ltxv",
+                    "device": "default",
+                },
+            }
+            workflow["prompt"]["335"] = {
+                "class_type": "VAELoaderKJ",
+                "inputs": {"vae_name": self.settings.ltx_audio_vae, "device": "main_device", "weight_dtype": "bf16"},
+            }
+            workflow["prompt"]["336"] = {
+                "class_type": "VAELoaderKJ",
+                "inputs": {"vae_name": self.settings.ltx_video_vae, "device": "main_device", "weight_dtype": "bf16"},
+            }
+        elif uses_unet:
+            # Official LTX transformer-only models need separate model, text encoder, and VAE loaders.
+            workflow["prompt"]["317"] = {
+                "class_type": "UNETLoader",
+                "inputs": {"unet_name": self._ltx_unet_name(), "weight_dtype": self.settings.ltx_unet_weight_dtype},
+            }
             workflow["prompt"]["318"] = {
                 "class_type": "DualCLIPLoader",
                 "inputs": {

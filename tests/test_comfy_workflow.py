@@ -209,6 +209,32 @@ def test_ltx_gguf_workflow_uses_split_loaders(tmp_path):
     assert prompt["303"]["inputs"]["audio_vae"] == ["335", 0]
 
 
+def test_ltx_unet_workflow_uses_split_loaders(tmp_path):
+    settings = Settings(data_dir=tmp_path / "data", final_video_backend="ltx_ia2v", ltx_model_format="unet")
+    workflow = ComfyClient(settings)._ltx_ia2v_workflow(
+        image_name="avatar.png",
+        audio_name="voice.wav",
+        prompt="natural talking avatar",
+        video_prefix="test_ltx",
+        duration=1.0,
+        seed=123,
+        width=512,
+        height=512,
+        fps=24,
+    )
+    prompt = workflow["prompt"]
+
+    assert prompt["317"]["class_type"] == "UNETLoader"
+    assert prompt["317"]["inputs"]["unet_name"] == settings.ltx_unet_model
+    assert prompt["317"]["inputs"]["weight_dtype"] == settings.ltx_unet_weight_dtype
+    assert prompt["318"]["class_type"] == "DualCLIPLoader"
+    assert prompt["335"]["class_type"] == "VAELoaderKJ"
+    assert prompt["336"]["class_type"] == "VAELoaderKJ"
+    assert prompt["293"]["inputs"]["model"] == ["317", 0]
+    assert prompt["295"]["inputs"]["vae"] == ["336", 0]
+    assert prompt["328"]["inputs"]["audio_vae"] == ["335", 0]
+
+
 def test_ltx_output_size_is_square_from_shorter_config_side(tmp_path):
     settings = Settings(data_dir=tmp_path / "data", ltx_width=1280, ltx_height=720)
 

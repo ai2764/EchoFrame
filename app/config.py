@@ -99,7 +99,9 @@ class Settings(BaseSettings):
     wan_5b_scheduler: str = "simple"
 
     ltx_profile: Literal["quality", "fast"] = "quality"
-    ltx_model_format: Literal["checkpoint", "gguf"] = "checkpoint"
+    # Experimental: "unet" supports official LTX transformer-only models via split loaders.
+    # Keep "checkpoint" as the product default so normal installs do not pull 20GB+ models.
+    ltx_model_format: Literal["checkpoint", "gguf", "unet"] = "checkpoint"
     ltx_width: int = 768
     ltx_height: int = 768
     ltx_fps: int = 24
@@ -111,6 +113,9 @@ class Settings(BaseSettings):
     ltx_unload_after_video: bool = True
     ltx_checkpoint: str = "ltx-2.3-22b-dev-fp8.safetensors"
     ltx_fast_checkpoint: str = "ltx-2.3-22b-distilled-fp8.safetensors"
+    # Used only when ltx_model_format="unet".
+    ltx_unet_model: str = "ltx-2.3-22b-distilled-1.1_transformer_only_fp8_scaled.safetensors"
+    ltx_unet_weight_dtype: str = "default"
     ltx_gguf_model: str = "LTX-2.3-dev-Q4_K_M.gguf"
     ltx_text_encoder: str = "gemma_3_12B_it_fp4_mixed.safetensors"
     ltx_text_projection: str = "ltx-2.3_text_projection_bf16.safetensors"
