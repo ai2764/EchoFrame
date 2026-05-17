@@ -45,7 +45,7 @@ def service_definitions(settings: Settings) -> list[ServiceDefinition]:
             label="CosyVoice",
             kind="tts",
             default=tts_default,
-            required_for="LTX IA2V and Wan + MuseTalk workflows; not required for LTX native-audio mode",
+            required_for="LTX IA2V, LTX IA2V Q4, and Wan + MuseTalk workflows; not required for LTX native-audio mode",
             health="HTTP /health when TTS_BACKEND=http; file/model checks when TTS_BACKEND=native",
             config_keys=[
                 "TTS_BACKEND",
@@ -68,7 +68,7 @@ def service_definitions(settings: Settings) -> list[ServiceDefinition]:
             label="ComfyUI",
             kind="image/audio-to-video and image-to-video",
             default=settings.comfy_url,
-            required_for="LTX native audio, LTX IA2V, and Wan base video modes",
+            required_for="LTX native audio, LTX IA2V, LTX IA2V Q4, and Wan base video modes",
             health="GET /system_stats",
             config_keys=["COMFY_URL", "COMFY_ROOT", "COMFY_BASE_DIR", "COMFY_MODELS_DIR"],
             repo_note="Run ComfyUI yourself with the required LTX IA2V and Wan2.2 workflow nodes and models.",

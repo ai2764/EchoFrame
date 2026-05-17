@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     output_size: int = 320
     resolution_min: int = 120
     resolution_max: int = 1028
-    final_video_backend: Literal["ltx_ia2v", "ltx_native_audio", "musetalk"] = "ltx_ia2v"
+    final_video_backend: Literal["ltx_ia2v", "ltx_ia2v_q4", "ltx_native_audio", "musetalk"] = "ltx_ia2v"
 
     llm_base_url: str = "http://127.0.0.1:1234/v1"
     llm_model: str = ""

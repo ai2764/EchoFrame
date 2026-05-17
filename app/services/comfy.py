@@ -3,6 +3,7 @@ import random
 import shutil
 import struct
 import time
+import wave
 import zlib
 from pathlib import Path
 
@@ -267,6 +268,32 @@ class ComfyClient:
             unload_after=False,
         )
 
+    async def prepare_ltx_ia2v_external_audio(self, resolution: int | None = None) -> None:
+        run_dir = self.settings.abs_data_dir / "prepare"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        image_path = run_dir / "ltx_q4_prepare_avatar.png"
+        audio_path = run_dir / "ltx_q4_prepare_voice.wav"
+        self._write_solid_png(image_path, 256, 256)
+        self._write_silent_wav(audio_path, seconds=0.4)
+        size = max(256, int(resolution or min(self.settings.ltx_width, self.settings.ltx_height)))
+        if size % 2:
+            size -= 1
+        await self.generate_ltx_ia2v(
+            image_path=image_path,
+            audio_path=audio_path,
+            prompt=(
+                "front-facing talking portrait warmup, clean frame, subtle lip movement, "
+                "no subtitles, no captions, no on-screen text, no watermark"
+            ),
+            audio_duration=0.4,
+            run_id=f"prepare_ltx_q4_{int(time.time())}",
+            run_dir=run_dir,
+            width=size,
+            height=size,
+            fps=self.settings.ltx_fps,
+            unload_after=False,
+        )
+
     async def _poll(self, prompt_id: str, run_state: RunState | None = None) -> dict:
         deadline = time.time() + self.settings.comfy_timeout_seconds
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -331,6 +358,14 @@ class ComfyClient:
             + chunk(b"IEND", b"")
         )
         path.write_bytes(png)
+
+    def _write_silent_wav(self, path: Path, seconds: float, sample_rate: int = 16000) -> None:
+        frames = max(1, int(seconds * sample_rate))
+        with wave.open(str(path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(sample_rate)
+            wav.writeframes(b"\x00\x00" * frames)
 
     def _find_video(self, outputs: dict) -> Path | None:
         for node in outputs.values():

@@ -69,6 +69,65 @@ def test_chat_request_can_select_ltx_backend_when_default_is_musetalk(tmp_path):
     assert not musetalk_called
 
 
+def test_chat_request_can_select_ltx_q4_backend_and_keep_tts_loaded(tmp_path):
+    settings = Settings(
+        data_dir=tmp_path / "data",
+        final_video_backend="ltx_ia2v",
+        ltx_unload_llm_before_video=False,
+        ltx_unload_tts_before_video=True,
+        ltx_reload_tts_after_video=True,
+    )
+    avatar_dir = settings.abs_data_dir / "avatars" / "av_test"
+    avatar_dir.mkdir(parents=True)
+    (avatar_dir / "source.png").write_bytes(b"avatar")
+
+    pipeline = TalkingAvatarPipeline(settings)
+    events = []
+
+    async def plan(*_):
+        return {
+            "reply": "hello",
+            "cosyvoice_instruct": "calm",
+            "wan_prompt": "front-facing bust shot",
+        }
+
+    async def synthesize(**kwargs):
+        events.append("tts")
+        kwargs["output_path"].write_bytes(b"audio")
+        return "sent"
+
+    async def unload_tts():
+        events.append("unload_tts")
+
+    async def generate_ltx_video(**kwargs):
+        events.append(("ltx", kwargs["ltx_model_format"], kwargs["unload_after"]))
+        out = kwargs["run_dir"] / "ltx_raw.mp4"
+        out.write_bytes(b"video")
+        return out
+
+    pipeline.llm.plan = plan
+    pipeline.tts.synthesize = synthesize
+    pipeline.services.unload_tts_for_ltx = unload_tts
+    pipeline.media.duration = lambda _: 1.0
+    pipeline.media.mux_audio = lambda video, audio, output: output.write_bytes(video.read_bytes())
+    pipeline.video.generate_ltx_ia2v_video = generate_ltx_video
+
+    response = asyncio.run(
+        pipeline.chat(
+            ChatRequest(
+                avatar_id="av_test",
+                message="hello",
+                final_video_backend="ltx_ia2v_q4",
+                resolution=512,
+            )
+        )
+    )
+
+    assert response.final_video_backend == "ltx_ia2v_q4"
+    assert response.resolution == 512
+    assert events == ["tts", ("ltx", "gguf", False)]
+
+
 def test_chat_request_can_select_ltx_native_audio_backend_and_skip_tts(tmp_path):
     settings = Settings(
         data_dir=tmp_path / "data",

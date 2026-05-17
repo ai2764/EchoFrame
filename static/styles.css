@@ -685,7 +685,7 @@ button:disabled {
 
 .workflowGroup {
   display: grid;
-  grid-template-columns: repeat(3, minmax(155px, 1fr));
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
   gap: 8px;
 }
 

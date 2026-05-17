@@ -21,6 +21,9 @@ from app.services.run_control import RunState
 from app.services.service_manager import ServiceManager
 
 
+LTX_IA2V_BACKENDS = {"ltx_ia2v", "ltx_ia2v_q4"}
+
+
 class TalkingAvatarPipeline:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -199,12 +202,13 @@ class TalkingAvatarPipeline:
                 "ltx_height": ltx_resolution,
                 "ltx_fps": self.settings.ltx_fps,
             }
-        elif final_video_backend == "ltx_ia2v":
+        elif final_video_backend in LTX_IA2V_BACKENDS:
+            ltx_q4_mode = final_video_backend == "ltx_ia2v_q4"
             video_prompt = self.llm.video_prompt_for_reply(plan["wan_prompt"], plan["reply"])
             self._check_cancel(run_state)
             yield {"type": "stage", "stage": "pre_ltx_vram_release", "status": "running"}
             await asyncio.sleep(0.01)
-            await self._release_vram_for_ltx(timings, run_state)
+            await self._release_vram_for_ltx(timings, run_state, unload_tts=not ltx_q4_mode)
             yield {
                 "type": "stage",
                 "stage": "pre_ltx_vram_release",
@@ -225,6 +229,8 @@ class TalkingAvatarPipeline:
                 run_dir=out_dir,
                 resolution=resolution,
                 run_state=run_state,
+                ltx_model_format="gguf" if ltx_q4_mode else None,
+                unload_after=False if ltx_q4_mode else None,
             )
             talk_path = out_dir / "final.mp4"
             await asyncio.to_thread(self.media.mux_audio, base_path, audio_path, talk_path)
@@ -239,6 +245,7 @@ class TalkingAvatarPipeline:
                 "ltx_width": ltx_resolution,
                 "ltx_height": ltx_resolution,
                 "ltx_fps": self.settings.ltx_fps,
+                "ltx_model_format": "gguf" if ltx_q4_mode else self.settings.ltx_model_format,
             }
         else:
             start = time.perf_counter()
@@ -493,13 +500,14 @@ class TalkingAvatarPipeline:
                 "ltx_height": ltx_resolution,
                 "ltx_fps": self.settings.ltx_fps,
             }
-        elif final_video_backend == "ltx_ia2v":
+        elif final_video_backend in LTX_IA2V_BACKENDS:
+            ltx_q4_mode = final_video_backend == "ltx_ia2v_q4"
             ltx_requested_resolution = self._previous_ltx_resolution(previous, requested_resolution)
             video_prompt = self.llm.video_prompt_for_reply(plan["wan_prompt"], plan["reply"])
             self._check_cancel(run_state)
             yield {"type": "stage", "stage": "pre_ltx_vram_release", "status": "running"}
             await asyncio.sleep(0.01)
-            await self._release_vram_for_ltx(timings, run_state)
+            await self._release_vram_for_ltx(timings, run_state, unload_tts=not ltx_q4_mode)
             yield {
                 "type": "stage",
                 "stage": "pre_ltx_vram_release",
@@ -520,6 +528,8 @@ class TalkingAvatarPipeline:
                 run_dir=out_dir,
                 resolution=ltx_requested_resolution,
                 run_state=run_state,
+                ltx_model_format="gguf" if ltx_q4_mode else None,
+                unload_after=False if ltx_q4_mode else None,
             )
             talk_path = out_dir / "final.mp4"
             await asyncio.to_thread(self.media.mux_audio, base_path, audio_path, talk_path)
@@ -534,6 +544,7 @@ class TalkingAvatarPipeline:
                 "ltx_width": ltx_resolution,
                 "ltx_height": ltx_resolution,
                 "ltx_fps": self.settings.ltx_fps,
+                "ltx_model_format": "gguf" if ltx_q4_mode else self.settings.ltx_model_format,
             }
         else:
             start = time.perf_counter()
@@ -636,15 +647,21 @@ class TalkingAvatarPipeline:
         if run_state:
             run_state.check()
 
-    async def _release_vram_for_ltx(self, timings: dict[str, float], run_state: RunState | None = None) -> None:
-        if not (self.settings.ltx_unload_llm_before_video or self.settings.ltx_unload_tts_before_video):
+    async def _release_vram_for_ltx(
+        self,
+        timings: dict[str, float],
+        run_state: RunState | None = None,
+        unload_tts: bool | None = None,
+    ) -> None:
+        should_unload_tts = self.settings.ltx_unload_tts_before_video if unload_tts is None else unload_tts
+        if not (self.settings.ltx_unload_llm_before_video or should_unload_tts):
             return
         start = time.perf_counter()
         self._check_cancel(run_state)
         if self.settings.ltx_unload_llm_before_video:
             await self.services.unload_llm_for_ltx()
         self._check_cancel(run_state)
-        if self.settings.ltx_unload_tts_before_video:
+        if should_unload_tts:
             await self.services.unload_tts_for_ltx()
         timings["pre_ltx_vram_release"] = round(time.perf_counter() - start, 3)
         self._check_cancel(run_state)
@@ -743,7 +760,7 @@ class TalkingAvatarPipeline:
 
     def _run_backend(self, previous: dict) -> str:
         backend = str(previous.get("final_video_backend") or "").strip()
-        if backend in {"ltx_ia2v", "ltx_native_audio", "musetalk"}:
+        if backend in {"ltx_ia2v", "ltx_ia2v_q4", "ltx_native_audio", "musetalk"}:
             return backend
         if previous.get("ltx_audio_mode") == "native" or previous.get("ltx_generated_audio"):
             return "ltx_native_audio"

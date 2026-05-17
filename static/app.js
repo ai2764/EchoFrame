@@ -34,6 +34,7 @@ const STAGE_LABELS = {
 };
 const WORKFLOW_STAGES = {
   ltx_ia2v: ["llm", "tts", "audio_probe", "pre_ltx_vram_release", "ltx_ia2v", "post_ltx_tts_preload", "total"],
+  ltx_ia2v_q4: ["llm", "tts", "audio_probe", "pre_ltx_vram_release", "ltx_ia2v", "total"],
   ltx_native_audio: ["llm", "ltx_native_audio", "native_audio_export", "total"],
   musetalk: [
     "pre_wan_comfy_release",
@@ -48,6 +49,7 @@ const WORKFLOW_STAGES = {
 };
 const WORKFLOW_LABELS = {
   ltx_ia2v: "workflowLtx",
+  ltx_ia2v_q4: "workflowLtxQ4",
   ltx_native_audio: "workflowLtxNative",
   musetalk: "workflowWanMuseTalk",
 };
@@ -76,14 +78,17 @@ const TRANSLATIONS = {
     language: "语言",
     workflow: "工作流",
     workflowLtx: "LTX IA2V",
+    workflowLtxQ4: "LTX IA2V Q4",
     workflowLtxNative: "LTX 原生声画",
     workflowWanMuseTalk: "Wan + MuseTalk",
     workflowHintLtx: "TTS \u51fa\u58f0\uff0cLTX \u51fa\u89c6\u9891",
+    workflowHintLtxQ4: "TTS + Q4 \u9884\u88c5\u5e38\u9a7b",
     workflowHintNative: "LTX \u540c\u65f6\u51fa\u58f0\u97f3\u548c\u89c6\u9891",
     workflowHintWan: "TTS \u51fa\u58f0\uff0cWan \u51fa\u5e95\u7247\uff0cMuseTalk \u5bf9\u53e3\u578b",
     flowText: "文本",
     flowTts: "TTS",
     flowLtx: "LTX",
+    flowLtxQ4: "LTX Q4",
     flowLtxAv: "LTX 声画",
     flowWan: "Wan",
     flowMuseTalk: "口型",
@@ -140,6 +145,7 @@ const TRANSLATIONS = {
     runningRun: "运行中 {id}",
     runningMuseTalk: "正在运行 MuseTalk",
     runningLtxIa2v: "正在运行 LTX IA2V",
+    runningLtxQ4: "\u6b63\u5728\u8fd0\u884c LTX IA2V Q4",
     runningLtxNativeAudio: "正在运行 LTX 原生声画",
     runningWanLoop: "正在运行 Wan Loop + MuseTalk",
     runningWan: "正在运行 Wan Full + MuseTalk",
@@ -187,14 +193,17 @@ const TRANSLATIONS = {
     avatar: "Avatar",
     workflow: "Workflow",
     workflowLtx: "LTX IA2V",
+    workflowLtxQ4: "LTX IA2V Q4",
     workflowLtxNative: "LTX Native A/V",
     workflowWanMuseTalk: "Wan + MuseTalk",
     workflowHintLtx: "TTS voice, LTX video",
+    workflowHintLtxQ4: "TTS + Q4 stay resident",
     workflowHintNative: "LTX voice and video",
     workflowHintWan: "TTS voice, Wan base, MuseTalk lips",
     flowText: "Text",
     flowTts: "TTS",
     flowLtx: "LTX",
+    flowLtxQ4: "LTX Q4",
     flowLtxAv: "LTX A/V",
     flowWan: "Wan",
     flowMuseTalk: "Lip",
@@ -253,6 +262,7 @@ const TRANSLATIONS = {
     runningRun: "Running {id}",
     runningMuseTalk: "Running MuseTalk",
     runningLtxIa2v: "Running LTX IA2V",
+    runningLtxQ4: "Running LTX IA2V Q4",
     runningLtxNativeAudio: "Running LTX Native A/V",
     runningWanLoop: "Running Wan Loop + MuseTalk",
     runningWan: "Running Wan Full + MuseTalk",
@@ -881,6 +891,7 @@ function updateRegenerateButtons() {
 
 function runningStateKey() {
   if (videoBackend === "ltx_native_audio") return "runningLtxNativeAudio";
+  if (videoBackend === "ltx_ia2v_q4") return "runningLtxQ4";
   if (videoBackend === "ltx_ia2v") return "runningLtxIa2v";
   if (mode === "wan_loop") return "runningWanLoop";
   if (mode === "wan") return "runningWan";

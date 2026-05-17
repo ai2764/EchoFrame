@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>EchoFrame</title>
-  <link rel="stylesheet" href="/static/styles.css?v=14">
+  <link rel="stylesheet" href="/static/styles.css?v=15">
 </head>
 <body>
   <main class="shell">
@@ -100,6 +100,19 @@
                   <span class="flowStep" data-i18n="flowTts">TTS</span>
                   <span class="flowLink"></span>
                   <span class="flowStep" data-i18n="flowLtx">LTX</span>
+                  <span class="flowLink"></span>
+                  <span class="flowStep" data-i18n="flowMp4">MP4</span>
+                </span>
+              </button>
+              <button class="workflow workflowCard" data-backend="ltx_ia2v_q4" type="button">
+                <span class="workflowTitle" data-i18n="workflowLtxQ4">LTX IA2V Q4</span>
+                <span class="workflowHint" data-i18n="workflowHintLtxQ4">TTS + Q4 stay resident</span>
+                <span class="workflowFlow" aria-hidden="true">
+                  <span class="flowStep" data-i18n="flowText">Text</span>
+                  <span class="flowLink"></span>
+                  <span class="flowStep" data-i18n="flowTts">TTS</span>
+                  <span class="flowLink"></span>
+                  <span class="flowStep" data-i18n="flowLtxQ4">LTX Q4</span>
                   <span class="flowLink"></span>
                   <span class="flowStep" data-i18n="flowMp4">MP4</span>
                 </span>
@@ -238,6 +251,6 @@
       </section>
     </section>
   </main>
-  <script src="/static/app.js?v=37"></script>
+  <script src="/static/app.js?v=38"></script>
 </body>
 </html>

@@ -143,7 +143,10 @@ class ServiceManager:
             await self.start("cosyvoice")
 
     async def prepare_workflow(self, backend: str, mode: str = "fast", resolution: int | None = None) -> PrepareResponse:
+        if backend not in {"ltx_native_audio", "ltx_ia2v_q4", "ltx_ia2v", "musetalk"}:
+            raise HTTPException(status_code=400, detail="unknown workflow")
         start = time.perf_counter()
+        timings = {"vram_clear": await self.clear_vram_for_prepare()}
         if backend == "ltx_native_audio":
             await self.ensure("comfyui")
             await ComfyClient(self.settings).prepare_ltx_native_audio(resolution=resolution)
@@ -151,7 +154,25 @@ class ServiceManager:
                 ok=True,
                 workflow=backend,
                 detail="LTX native A/V warmup completed",
-                timings={"prepare": round(time.perf_counter() - start, 3)},
+                timings={**timings, "prepare": round(time.perf_counter() - start, 3)},
+            )
+        if backend == "ltx_ia2v_q4":
+            await self.preload_tts_for_workflow()
+            await self.ensure("comfyui")
+            q4_settings = self.settings.model_copy(
+                update={
+                    "ltx_model_format": "gguf",
+                    "ltx_unload_after_video": False,
+                    "ltx_unload_tts_before_video": False,
+                    "ltx_reload_tts_after_video": False,
+                }
+            )
+            await ComfyClient(q4_settings).prepare_ltx_ia2v_external_audio(resolution=resolution)
+            return PrepareResponse(
+                ok=True,
+                workflow=backend,
+                detail="TTS + LTX Q4 warmup completed; models kept resident",
+                timings={**timings, "prepare": round(time.perf_counter() - start, 3)},
             )
         if backend in {"ltx_ia2v", "musetalk"}:
             await self.preload_tts_for_workflow()
@@ -160,9 +181,23 @@ class ServiceManager:
                 ok=True,
                 workflow=backend,
                 detail=f"TTS warmup completed for {label}",
-                timings={"prepare": round(time.perf_counter() - start, 3)},
+                timings={**timings, "prepare": round(time.perf_counter() - start, 3)},
             )
         raise HTTPException(status_code=400, detail="unknown workflow")
+
+    async def clear_vram_for_prepare(self) -> float:
+        start = time.perf_counter()
+        actions = (
+            ComfyClient(self.settings).free_memory,
+            self.unload_llm_for_ltx,
+            self.unload_tts_for_ltx,
+        )
+        for action in actions:
+            try:
+                await action()
+            except Exception:
+                pass
+        return round(time.perf_counter() - start, 3)
 
     async def preload_tts_for_workflow(self) -> None:
         if self.settings.tts_backend == "native":

@@ -101,11 +101,17 @@ class VideoGenerationModule:
         run_dir: Path,
         resolution: int | None = None,
         run_state: RunState | None = None,
+        ltx_model_format: str | None = None,
+        unload_after: bool | None = None,
     ) -> Path:
         if self.services:
             await self.services.ensure("comfyui")
+        settings = self.settings
+        if ltx_model_format:
+            settings = self.settings.model_copy(update={"ltx_model_format": ltx_model_format})
+        comfy = self.comfy if settings is self.settings else ComfyClient(settings)
         output_size = self.ltx_output_size(resolution)
-        return await self.comfy.generate_ltx_ia2v(
+        return await comfy.generate_ltx_ia2v(
             image_path=avatar_path,
             audio_path=audio_path,
             prompt=prompt,
@@ -141,6 +147,7 @@ class VideoGenerationModule:
             width=output_size,
             height=output_size,
             fps=self.settings.ltx_fps,
+            unload_after=unload_after,
         )
 
     def ltx_output_size(self, requested: int | None = None) -> int:
